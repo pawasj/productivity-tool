@@ -336,8 +336,6 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
 
                 // Brief row
                 const brief = row.data;
-                const vertical = verticals.find(v => v.id === brief.vertical_id);
-                const briefVertical = (brief.vertical as Record<string, unknown>) || null;
                 const creator = (brief.creator as Record<string, unknown>) || null;
                 return (
                   <tr key={`brief-${brief.id}`} className="hover:bg-violet-50/30 transition-colors group">
@@ -347,7 +345,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-medium text-slate-900 text-sm">{String(brief.client_name || "—")}</p>
+                      <p className="font-medium text-slate-900 text-sm">{String(brief.brand_name || "—")}</p>
                       <p className="text-xs text-slate-400 capitalize">{String(brief.campaign_type || "")}</p>
                     </td>
                     <td className="px-4 py-3">
@@ -357,15 +355,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {(briefVertical || vertical) && (
-                        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-                          style={{
-                            backgroundColor: `${(briefVertical?.color || vertical?.color) as string}20`,
-                            color: (briefVertical?.color || vertical?.color) as string,
-                          }}>
-                          {String(briefVertical?.icon || vertical?.icon || "")} {String(briefVertical?.name || vertical?.name || "")}
-                        </span>
-                      )}
+                      <span className="text-xs text-slate-400">—</span>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-600 font-medium">Campaign Brief</span>

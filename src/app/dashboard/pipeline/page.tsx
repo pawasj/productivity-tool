@@ -13,7 +13,7 @@ export default async function PipelinePage() {
     supabase.from("profiles").select("*").order("full_name"),
     supabase.from("verticals").select("*").order("order_index"),
     supabase.from("profiles").select("*").eq("id", user.id).single(),
-    supabase.from("client_briefs").select("*, creator:profiles!client_briefs_created_by_fkey(full_name), vertical:verticals(name, color, icon)").order("created_at", { ascending: false }),
+    supabase.from("client_briefs").select("*, creator:profiles!client_briefs_created_by_fkey(full_name)").order("created_at", { ascending: false }),
   ]);
 
   return (

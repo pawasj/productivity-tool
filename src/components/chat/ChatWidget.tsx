@@ -49,15 +49,15 @@ export default function ChatWidget() {
         supabase.from("profiles").select("*").eq("id", user.id).single(),
         supabase.from("profiles").select("*").order("full_name"),
       ]);
-      if (profile) setCurrentUser(profile as Profile);
-      if (members) setAllMembers(members as Profile[]);
+      const profileData = profile as Profile | null;
+      const membersData = (members || []) as Profile[];
+      if (profileData) setCurrentUser(profileData);
+      setAllMembers(membersData);
+      // Load conversations only after BOTH user and members are ready
+      if (profileData) await loadConversationsWith(profileData, membersData);
     }
     init();
   }, []);
-
-  useEffect(() => {
-    if (currentUser) loadConversations();
-  }, [currentUser]);
 
   useEffect(() => {
     if (!activeConvId) return;
@@ -79,10 +79,10 @@ export default function ChatWidget() {
     if (open && !minimized) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, open, minimized]);
 
-  async function loadConversations() {
-    if (!currentUser) return;
-    const { data: memberRows } = await supabase
-      .from("chat_members").select("conversation_id").eq("user_id", currentUser.id);
+  async function loadConversationsWith(user: Profile, members: Profile[]) {
+    const { data: memberRows, error: mrErr } = await supabase
+      .from("chat_members").select("conversation_id").eq("user_id", user.id);
+    if (mrErr) { console.error("chat_members read error:", mrErr.message); return; }
     if (!memberRows?.length) return;
     const ids = memberRows.map(r => r.conversation_id);
     const { data: convRows } = await supabase
@@ -92,14 +92,14 @@ export default function ChatWidget() {
     const convos: Conversation[] = await Promise.all(convRows.map(async c => {
       const { data: mData } = await supabase.from("chat_members").select("user_id").eq("conversation_id", c.id);
       const memberIds = (mData || []).map(m => m.user_id);
-      const members = allMembers.filter(m => memberIds.includes(m.id));
+      const convMembers = members.filter(m => memberIds.includes(m.id));
       const { data: lastMsg } = await supabase.from("chat_messages")
         .select("content, created_at").eq("conversation_id", c.id)
         .order("created_at", { ascending: false }).limit(1).single();
       const displayName = c.is_group
-        ? (c.name || members.filter(m => m.id !== currentUser.id).map(m => m.full_name?.split(" ")[0]).join(", "))
-        : members.find(m => m.id !== currentUser.id)?.full_name || "Chat";
-      return { id: c.id, name: displayName, is_group: c.is_group, members, last_message: lastMsg?.content, last_message_at: lastMsg?.created_at };
+        ? (c.name || convMembers.filter(m => m.id !== user.id).map(m => m.full_name?.split(" ")[0]).join(", "))
+        : convMembers.find(m => m.id !== user.id)?.full_name || "Chat";
+      return { id: c.id, name: displayName, is_group: c.is_group, members: convMembers, last_message: lastMsg?.content, last_message_at: lastMsg?.created_at };
     }));
 
     const sorted = convos.sort((a, b) => {
@@ -144,16 +144,27 @@ export default function ChatWidget() {
       const existing = conversations.find(c => !c.is_group && c.members.some(m => m.id === other) && c.members.some(m => m.id === currentUser.id));
       if (existing) { setActiveConvId(existing.id); setView("chat"); setSelectedMembers([]); return; }
     }
-    const { data: conv } = await supabase.from("chat_conversations").insert({
+    const { data: conv, error: convErr } = await supabase.from("chat_conversations").insert({
       name: isGroup ? (groupName.trim() || null) : null, is_group: isGroup, created_by: currentUser.id,
     }).select().single();
-    if (!conv) return;
-    await supabase.from("chat_members").insert(allParticipants.map(uid => ({ conversation_id: conv.id, user_id: uid })));
-    const members = allMembers.filter(m => allParticipants.includes(m.id));
+    if (convErr || !conv) {
+      console.error("Failed to create conversation:", convErr?.message);
+      alert("Could not start chat. Please check Supabase SQL — see console for details.");
+      return;
+    }
+    const { error: membersErr } = await supabase.from("chat_members").insert(
+      allParticipants.map(uid => ({ conversation_id: conv.id, user_id: uid }))
+    );
+    if (membersErr) {
+      console.error("Failed to add members:", membersErr.message);
+      alert("Chat created but members could not be added: " + membersErr.message);
+      return;
+    }
+    const convMembers = allMembers.filter(m => allParticipants.includes(m.id));
     const displayName = isGroup
-      ? (groupName.trim() || members.filter(m => m.id !== currentUser.id).map(m => m.full_name?.split(" ")[0]).join(", "))
-      : members.find(m => m.id !== currentUser.id)?.full_name || "Chat";
-    const newConv: Conversation = { id: conv.id, name: displayName, is_group: isGroup, members };
+      ? (groupName.trim() || convMembers.filter(m => m.id !== currentUser.id).map(m => m.full_name?.split(" ")[0]).join(", "))
+      : convMembers.find(m => m.id !== currentUser.id)?.full_name || "Chat";
+    const newConv: Conversation = { id: conv.id, name: displayName, is_group: isGroup, members: convMembers };
     setConversations(prev => [newConv, ...prev]);
     setActiveConvId(conv.id);
     setView("chat");
