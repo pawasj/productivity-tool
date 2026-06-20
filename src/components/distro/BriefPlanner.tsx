@@ -79,6 +79,22 @@ const ALL_PLATFORMS = [
   { id: "website", label: "Website / Blog" },
 ];
 
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad", "Kolkata", "Pune",
+  "Ahmedabad", "Jaipur", "Lucknow", "Chandigarh", "Guwahati", "Bhubaneswar",
+];
+
+const INDIAN_LANGUAGES = [
+  "Hindi", "Bengali", "Marathi", "Telugu", "Tamil", "Gujarati", "Kannada",
+  "Malayalam", "Odia", "Punjabi", "Assamese", "Urdu", "Bhojpuri", "Rajasthani",
+  "Maithili", "Haryanvi", "Chhattisgarhi",
+];
+
 const SCORE_COLOR: Record<string, string> = {
   High: "bg-emerald-100 text-emerald-700",
   Medium: "bg-amber-100 text-amber-700",
@@ -149,6 +165,9 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
   const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
   const [discoveryPlatforms, setDiscoveryPlatforms] = useState<string[]>(["instagram", "youtube", "linkedin"]);
   const [discoveryContentType, setDiscoveryContentType] = useState<"creators" | "pages" | "both">("both");
+  const [discoveryGeo, setDiscoveryGeo] = useState("");
+  const [discoveryLanguage, setDiscoveryLanguage] = useState("");
+  const [discoveryGeoMode, setDiscoveryGeoMode] = useState<"state" | "language">("state");
 
   // Margin modal state
   const [showMarginModal, setShowMarginModal] = useState(false);
@@ -308,6 +327,8 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
         body: JSON.stringify({
           brief: { ...brief, content_type: discoveryContentType },
           platforms: discoveryPlatforms,
+          geo: discoveryGeo || "",
+          language: discoveryLanguage || "",
         }),
       });
       const json = await res.json();
@@ -597,6 +618,8 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
               {!discovering && discoveryPlatforms.length > 0 && (
                 <span className="text-xs text-slate-500 ml-2">
                   {discoveryPlatforms.join(", ")} · {discoveryContentType === "both" ? "creators + pages" : discoveryContentType}
+                  {discoveryGeo && <> · <span className="text-amber-600 font-medium">{discoveryGeo}</span></>}
+                  {discoveryLanguage && <> · <span className="text-amber-600 font-medium">{discoveryLanguage} content</span></>}
                 </span>
               )}
             </div>
@@ -617,7 +640,8 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
               <div>
                 <p className="text-sm font-medium text-slate-700">AI is researching the internet…</p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Searching {discoveryPlatforms.join(", ")} for {discoveryContentType === "both" ? "creators and pages" : discoveryContentType} matching your brief
+                  Searching {discoveryPlatforms.join(", ")} for {discoveryContentType === "both" ? "creators and pages" : discoveryContentType}
+                  {(discoveryGeo || discoveryLanguage) && ` · ${discoveryGeo || discoveryLanguage} specific`}
                 </p>
               </div>
             </div>
@@ -826,15 +850,29 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
       {/* ── Discovery Options Modal ──────────────────────────────────────── */}
       {showDiscoveryModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 sticky top-0 bg-white z-10">
               <div className="flex items-center gap-2">
                 <Search className="w-4 h-4 text-amber-500" />
                 <h3 className="font-semibold text-slate-900">Discovery Settings</h3>
               </div>
               <button onClick={() => setShowDiscoveryModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
             </div>
+
             <div className="p-5 space-y-5">
+
+              {/* Brief context pill — auto-pulled from campaign brief */}
+              {(brief.industry || brief.campaign_type || brief.target_audience) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800 space-y-0.5">
+                  <p className="font-semibold mb-1 text-amber-900">From your campaign brief — discovery will be tailored to:</p>
+                  {brief.industry && <p>· Industry: <strong>{brief.industry}</strong></p>}
+                  {brief.campaign_type && <p>· Campaign type: <strong>{brief.campaign_type}</strong></p>}
+                  {brief.target_audience && <p>· Audience: <strong>{brief.target_audience}</strong></p>}
+                  {brief.campaign_objective && <p>· Objective: <strong>{brief.campaign_objective.slice(0, 80)}{brief.campaign_objective.length > 80 ? "…" : ""}</strong></p>}
+                </div>
+              )}
+
+              {/* Platforms */}
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Platforms to Search</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -846,6 +884,8 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
                   ))}
                 </div>
               </div>
+
+              {/* Content type */}
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Content Type</p>
                 <div className="flex gap-2">
@@ -861,15 +901,78 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
                   ))}
                 </div>
               </div>
+
+              {/* Geography / Language (optional) */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Regional / Language Filter</p>
+                  <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Optional</span>
+                </div>
+                <p className="text-xs text-slate-500 mb-3">
+                  If selected, discovery will return <strong>only regional creators and pages</strong> who create content for that geography or in that language. Leave blank for national-level results.
+                </p>
+
+                {/* Toggle: State or Language */}
+                <div className="flex gap-1 bg-slate-100 rounded-lg p-1 mb-3">
+                  <button
+                    onClick={() => { setDiscoveryGeoMode("state"); setDiscoveryLanguage(""); }}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${discoveryGeoMode === "state" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                    By State / City
+                  </button>
+                  <button
+                    onClick={() => { setDiscoveryGeoMode("language"); setDiscoveryGeo(""); }}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${discoveryGeoMode === "language" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                    By Language
+                  </button>
+                </div>
+
+                {discoveryGeoMode === "state" ? (
+                  <div>
+                    <select
+                      value={discoveryGeo}
+                      onChange={e => setDiscoveryGeo(e.target.value)}
+                      className="w-full px-3 py-2.5 border-2 border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-400 text-slate-700">
+                      <option value="">No state/city filter — national results</option>
+                      {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    {discoveryGeo && (
+                      <p className="text-xs text-amber-700 mt-2 bg-amber-50 px-3 py-2 rounded-lg">
+                        Discovery will focus on creators based in or primarily covering <strong>{discoveryGeo}</strong> — including hyperlocal pages, regional news accounts, and state-specific communities.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {INDIAN_LANGUAGES.map(lang => (
+                        <button
+                          key={lang}
+                          onClick={() => setDiscoveryLanguage(prev => prev === lang ? "" : lang)}
+                          className={`py-2 px-3 rounded-xl text-sm font-medium border-2 transition-all ${discoveryLanguage === lang ? "border-amber-400 bg-amber-50 text-amber-800" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                          {lang}
+                        </button>
+                      ))}
+                    </div>
+                    {discoveryLanguage && (
+                      <p className="text-xs text-amber-700 mt-3 bg-amber-50 px-3 py-2 rounded-lg">
+                        Discovery will return creators who make content primarily in <strong>{discoveryLanguage}</strong> — including regional YouTubers, Instagram creators, newsletters, and communities.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {discoveryPlatforms.length === 0 && (
                 <p className="text-xs text-rose-600 bg-rose-50 px-3 py-2 rounded-lg">Select at least one platform to search.</p>
               )}
             </div>
-            <div className="flex gap-3 p-5 border-t border-slate-100">
+
+            <div className="flex gap-3 p-5 border-t border-slate-100 sticky bottom-0 bg-white">
               <button onClick={() => setShowDiscoveryModal(false)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
               <button onClick={runDiscovery} disabled={discoveryPlatforms.length === 0}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors">
-                <Search className="w-4 h-4" /> Start Discovery
+                <Search className="w-4 h-4" />
+                {(discoveryGeo || discoveryLanguage) ? `Search ${discoveryGeo || discoveryLanguage} creators` : "Start Discovery"}
               </button>
             </div>
           </div>

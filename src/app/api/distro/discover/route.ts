@@ -37,11 +37,12 @@ function buildPlatformSearchPlan(platforms: string[], brief: Record<string, stri
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { brief, platforms = ["instagram", "youtube", "linkedin"] } = body;
+    const { brief, platforms = ["instagram", "youtube", "linkedin"], geo = "", language = "" } = body;
     if (!brief?.brand_name) return NextResponse.json({ error: "brand_name required" }, { status: 400 });
 
     const contentType = brief.content_type || "both";
     const geography = brief.target_geography || "India";
+    const isRegional = !!(geo || language);
 
     const typeLabel = contentType === "creators"
       ? "individual content creators and influencers"
@@ -51,6 +52,44 @@ export async function POST(req: NextRequest) {
 
     const platformList = (platforms as string[]).join(", ").toUpperCase();
     const platformGuide = buildPlatformSearchPlan(platforms, brief, contentType);
+
+    // Build the regional/language constraint section
+    const regionalConstraint = isRegional ? `
+═══ REGIONAL / LANGUAGE FILTER — THIS IS MANDATORY ═══
+${geo ? `GEOGRAPHY FILTER: "${geo}"
+- ONLY return creators/pages who are BASED IN or primarily cover "${geo}"
+- This means: their audience, content, language, and follower base should be predominantly from ${geo}
+- For YouTube/Instagram: look specifically for "${geo} creator", "${geo} influencer", "${geo} page" in your searches
+- For Reddit: look for r/${geo.toLowerCase().replace(/\s+/g, "")} or regional subreddits
+- For LinkedIn: look for professionals based in ${geo}
+- For newsletters: look for "${geo} newsletter" or publications covering ${geo}
+- Do NOT include pan-India creators unless they have a strong ${geo} focus
+- Mark the location field clearly as "${geo}" for all results` : ""}
+${language ? `LANGUAGE FILTER: "${language}"
+- ONLY return creators/pages who create content PRIMARILY in ${language}
+- Search explicitly for "${language} creator", "${language} YouTuber", "${language} Instagram", "${language} content creator"
+- For YouTube: look for channels where the majority of videos are in ${language}
+- For Instagram: look for captions/reels in ${language}
+- For newsletters/Substack: look for ${language}-language publications
+- For Reddit: look for ${language}-language communities or subreddits
+- Pan-India accounts who sometimes post in ${language} do NOT qualify — must be primarily ${language}
+- Mark the category field with "${language} Content" or "${language} Creator" to clearly identify them` : ""}
+STRICT ENFORCEMENT: If you cannot verify that a result satisfies the ${geo ? `${geo} geography` : `${language} language`} filter, do NOT include it. It is better to return 6 highly relevant regional results than 15 mixed results. Quality over quantity for regional searches.` : "";
+
+    // Build niche/domain context
+    const nicheContext = `
+═══ NICHE / DOMAIN FOCUS ═══
+Industry: ${brief.industry || "General"}
+Campaign Type: ${brief.campaign_type || "Brand Awareness"}
+Target Audience: ${brief.target_audience || "General"}
+Campaign Objective: ${brief.campaign_objective || "Not specified"}
+Additional Context: ${brief.additional_notes || "None"}
+
+NICHE MATCHING RULES:
+- Prioritize accounts whose content niche DIRECTLY matches "${brief.industry || "the brand's industry"}"
+- Secondary: accounts with audience demographics matching "${brief.target_audience || "the target audience"}"
+- For a ${brief.campaign_type || "brand awareness"} campaign, prefer accounts known for ${brief.campaign_type === "Product Launch" ? "product reviews and unboxing" : brief.campaign_type === "Lead Generation" ? "educational content and tutorials" : brief.campaign_type === "Engagement" ? "interactive content, polls, memes" : "storytelling and brand integration"}
+- Do NOT include generic lifestyle or entertainment accounts unless they have a clear ${brief.industry || "relevant"} niche crossover`;
 
     const prompt = `You are a senior influencer marketing strategist at BCC Media Network, an Indian digital media agency. Your job is to find REAL, VERIFIED ${typeLabel} across ${platformList} for the following campaign.
 
@@ -65,6 +104,8 @@ Content Mix: ${contentType === "creators" ? "Creators & Influencers ONLY" : cont
 Budget: ₹${parseFloat(brief.total_budget || "0").toLocaleString("en-IN") || "Not specified"}
 Deliverables: ${brief.deliverables || "Not specified"}
 Additional Notes: ${brief.additional_notes || "None"}
+${nicheContext}
+${regionalConstraint}
 
 ═══ PLATFORMS TO SEARCH ═══
 ${platformList}
@@ -72,33 +113,46 @@ ${platformList}
 ═══ RESEARCH METHODOLOGY — follow this exactly ═══
 ${platformGuide}
 
+${isRegional ? `REGIONAL SEARCH QUERIES TO USE:
+${geo ? `- "${geo} ${brief.industry || ""} creator"
+- "${geo} influencer top accounts"
+- "${geo} meme page Instagram"
+- "top ${brief.industry || ""} YouTubers from ${geo}"
+- "${geo} based content creator brand collaboration"` : ""}
+${language ? `- "${language} YouTuber India top channels"
+- "${language} Instagram creator influencer"
+- "${language} content creator brand collab"
+- "top ${brief.industry || ""} creators ${language} content"
+- "${language} newsletter India"` : ""}
+Run these searches IN ADDITION to the platform-specific methodology above.` : ""}
+
 ═══ SEARCH STRATEGY ═══
-For EACH selected platform, run 2–3 targeted web searches using the search queries described above. Do NOT skip any platform. After gathering results, cross-reference and verify follower counts. Prefer results from:
-- Official platform analytics tools (Social Blade, Hypeauditor, Influencer.in)
-- Recent media articles (2023–2025) about Indian social media rankings
+For EACH selected platform, run 2–3 targeted web searches. ${isRegional ? `ALWAYS include the ${geo || language} filter term in your search queries.` : ""} After gathering results, cross-reference and verify follower counts. Prefer results from:
+- Social Blade, Hypeauditor, Influencer.in
+- Recent media articles (2023–2025) about Indian social media
 - Creator economy reports for India
 - Platform-specific discover/explore pages
 
 IMPORTANT RULES:
 1. Only include accounts you have VERIFIED through search results — never fabricate handles
-2. Include a mix of mega (1M+), macro (100K–1M), and micro (10K–100K) accounts for a balanced plan
-3. For each result, include the EXACT profile URL (e.g., instagram.com/handle, linkedin.com/in/name, reddit.com/r/subreddit, substack.com/author)
-4. Engagement rate matters more than raw follower count — flag accounts with notably high engagement
+2. ${isRegional ? `STRICT: Every result MUST satisfy the ${geo ? `"${geo}" geography` : `"${language}" language`} filter — no exceptions` : "Include a mix of mega (1M+), macro (100K–1M), and micro (10K–100K) accounts"}
+3. For each result, include the EXACT profile URL
+4. Engagement rate matters more than raw follower count
 5. ${contentType === "pages" ? "Focus on PAGES and COMMUNITIES, not individual people." : contentType === "creators" ? "Focus on INDIVIDUAL content creators, not brand pages." : "Include a healthy mix of creators and community pages."}
-6. Each result must be relevant to: ${brief.industry || "the brand's industry"} and targeted at ${brief.target_audience || "the target audience"}
+6. Each result must be relevant to: ${brief.industry || "the brand's industry"} · ${brief.target_audience || "the target audience"}
 
-After all searches, compile 12–18 best matches and return ONLY a JSON object (no markdown fences, no extra text):
+After all searches, compile ${isRegional ? "8–14" : "12–18"} best matches and return ONLY a JSON object (no markdown fences, no extra text):
 {
   "results": [
     {
       "handle_name": "@exact_handle_or_page_name",
       "platform": "instagram",
-      "category": "Meme Page / Tech Creator / Finance Newsletter / etc.",
+      "category": "${isRegional && geo ? `${geo} ` : isRegional && language ? `${language} ` : ""}Creator / Page / Newsletter / etc.",
       "followers": "2.3M",
       "engagement_rate": "4.2%",
-      "location": "Mumbai, Maharashtra",
+      "location": "${geo || "India"}",
       "contact": "email or DM if found",
-      "rationale": "Specific reason this account matches the ${brief.brand_name} campaign brief — mention audience overlap, content style, past brand collaborations if known",
+      "rationale": "Specific reason this account matches the ${brief.brand_name} campaign${isRegional ? ` — MUST mention why this is ${geo || language + "-language"} specific` : ""}",
       "match_score": "High",
       "profile_url": "https://instagram.com/handle",
       "type": "page"
@@ -106,7 +160,7 @@ After all searches, compile 12–18 best matches and return ONLY a JSON object (
   ]
 }
 
-match_score: "High" = strong audience & content alignment; "Medium" = good fit with minor gaps; "Low" = reach justifies inclusion despite lower alignment.
+match_score: "High" = strong niche, audience AND ${isRegional ? `regional (${geo || language}) ` : ""}alignment; "Medium" = good fit with minor gaps; "Low" = reach justifies inclusion.
 type: "creator" for individual people, "page" for communities/channels/newsletters/subreddits.`;
 
     const message = await anthropic.messages.create({
@@ -140,32 +194,41 @@ type: "creator" for individual people, "page" for communities/channels/newslette
   } catch (err: unknown) {
     console.error("discover error:", err);
     try {
-      const body2 = await req.clone().json().catch(() => ({})) as { brief?: Record<string, string>; platforms?: string[] };
-      return await fallbackDiscovery(body2.brief || {}, "both", "India", body2.platforms || ["instagram", "youtube", "linkedin"]);
+      const body2 = await req.clone().json().catch(() => ({})) as { brief?: Record<string, string>; platforms?: string[]; geo?: string; language?: string };
+      return await fallbackDiscovery(body2.brief || {}, "both", "India", body2.platforms || ["instagram", "youtube", "linkedin"], body2.geo || "", body2.language || "");
     } catch {
       return NextResponse.json({ error: String(err) }, { status: 500 });
     }
   }
 }
 
-async function fallbackDiscovery(brief: Record<string, string>, contentType: string, geography: string, platforms: string[]) {
+async function fallbackDiscovery(brief: Record<string, string>, contentType: string, geography: string, platforms: string[], geo = "", language = "") {
   const platformList = platforms.join(", ").toUpperCase();
+  const isRegional = !!(geo || language);
+  const regionalNote = geo
+    ? `IMPORTANT: Only include creators/pages who are based in or primarily cover ${geo}. Do not include pan-India accounts.`
+    : language
+    ? `IMPORTANT: Only include creators who make content primarily in ${language}. Do not include creators who merely occasionally post in ${language}.`
+    : "";
+
   const prompt = `You are a senior influencer marketing strategist with deep knowledge of the Indian social media landscape across ${platformList}.
 
 CAMPAIGN BRIEF:
 Brand: ${brief.brand_name || "Unknown Brand"}
 Industry: ${brief.industry || "Not specified"}
+Campaign Type: ${brief.campaign_type || "Not specified"}
 Target Audience: ${brief.target_audience || "Not specified"}
+Campaign Objective: ${brief.campaign_objective || "Not specified"}
 Geography: ${geography}
 Content Type: ${contentType}
 Platforms: ${platformList}
+${isRegional ? `\nREGIONAL FILTER: ${geo ? `State/City = ${geo}` : `Language = ${language}`}\n${regionalNote}` : ""}
 
-Based on your knowledge of real accounts on ${platformList}, suggest 12–15 ${contentType === "pages" ? "community pages, subreddits, newsletters" : contentType === "creators" ? "content creators and influencers" : "creators and community pages"} suitable for this campaign.
-
-Include accounts from EACH of the following platforms: ${platformList}
-For Reddit: include r/subreddit names. For Substack/Newsletter: include newsletter names.
+Based on your knowledge of real accounts on ${platformList}, suggest ${isRegional ? "8–12" : "12–15"} ${contentType === "pages" ? "community pages, subreddits, newsletters" : contentType === "creators" ? "content creators and influencers" : "creators and community pages"} suitable for this campaign.
+${isRegional ? `\nAll results MUST be ${geo ? `based in or focused on ${geo}` : `primarily creating content in ${language}`}. This is a hard requirement.` : "Include accounts from EACH of the following platforms: " + platformList}
 
 Only include real, well-known accounts. State clearly in the rationale if follower data is approximate.
+${isRegional ? `For each result, explicitly explain in the rationale WHY this account qualifies as ${geo || language + "-language"} specific.` : ""}
 
 Return ONLY valid JSON (no markdown):
 {
@@ -173,12 +236,12 @@ Return ONLY valid JSON (no markdown):
     {
       "handle_name": "@handle_or_community_name",
       "platform": "instagram",
-      "category": "Meme Page",
+      "category": "${isRegional && geo ? geo + " Creator" : isRegional && language ? language + " Content Creator" : "Meme Page"}",
       "followers": "~2.5M (approx)",
       "engagement_rate": "~3–5%",
-      "location": "India",
+      "location": "${geo || "India"}",
       "contact": "",
-      "rationale": "Why this matches the brief",
+      "rationale": "Why this matches the brief${isRegional ? ` and why they are ${geo || language + "-language"} specific` : ""}",
       "match_score": "High",
       "profile_url": "https://instagram.com/handle",
       "type": "page"
