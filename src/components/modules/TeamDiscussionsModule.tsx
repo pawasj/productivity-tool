@@ -66,7 +66,7 @@ export default function TeamDiscussionsModule({ verticalId, userId, members, pro
       <div className="flex items-center justify-between p-4 border-b border-slate-100">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-purple-500" />
-          <h3 className="font-semibold text-slate-900 text-sm">Team Discussions</h3>
+          <h3 className="font-semibold text-slate-900 text-sm">Internal Discussions</h3>
           <span className="bg-purple-100 text-purple-700 text-xs font-medium px-1.5 py-0.5 rounded-full">{discussions.length}</span>
         </div>
         <button onClick={() => setShowForm(true)} className="p-1.5 hover:bg-purple-50 rounded-lg transition-colors text-purple-600">

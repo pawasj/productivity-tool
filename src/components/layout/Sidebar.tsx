@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import {
   LayoutDashboard, TrendingUp,
-  LogOut, ChevronRight, Shield, Network,
+  LogOut, ChevronRight, Shield, Network, UserCircle,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import NotificationBell from "./NotificationBell";
@@ -19,6 +19,7 @@ const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/dashboard/pipeline", icon: TrendingUp, label: "Sales Pipeline" },
   { href: "/dashboard/distro", icon: Network, label: "Distribution Hub" },
+  { href: "/dashboard/profile", icon: UserCircle, label: "My Profile" },
 ];
 
 export default function Sidebar({ profile }: SidebarProps) {

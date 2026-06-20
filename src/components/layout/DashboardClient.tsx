@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
-import { Plus, Settings2, X, Check, Palette } from "lucide-react";
+import { Plus, Settings2, X, Check, Palette, LayoutDashboard } from "lucide-react";
 import TodosModule from "@/components/modules/TodosModule";
 import DiscussionsModule from "@/components/modules/DiscussionsModule";
 import MeetingsModule from "@/components/modules/MeetingsModule";
 import NotesModule from "@/components/modules/NotesModule";
 import TeamDiscussionsModule from "@/components/modules/TeamDiscussionsModule";
 import VerticalPipelineModule from "@/components/modules/VerticalPipelineModule";
+import IdeaDumpModule from "@/components/modules/IdeaDumpModule";
+import OverviewModule from "@/components/modules/OverviewModule";
 import type { Vertical, Profile } from "@/lib/types";
 import { VERTICAL_COLORS } from "@/lib/utils";
 
@@ -19,20 +21,30 @@ interface Props {
   userId: string;
 }
 
-const ICONS = ["📺", "📻", "🎬", "🎙️", "📱", "💻", "🌐", "📢", "🎯", "🏢", "📊", "💼"];
+const ICONS = ["📺", "📻", "🎬", "🎙️", "📱", "💻", "🌐", "📢", "🎯", "🏢", "📊", "💼", "💡", "🎨", "🚀"];
+const OVERVIEW_ID = "__overview__";
 
 export default function DashboardClient({ verticals: initialVerticals, profile, members, userId }: Props) {
   const [verticals, setVerticals] = useState<Vertical[]>(initialVerticals);
-  const [activeVertical, setActiveVertical] = useState<string>(initialVerticals[0]?.id || "");
+  const [activeVertical, setActiveVertical] = useState<string>(OVERVIEW_ID);
   const [showAddVertical, setShowAddVertical] = useState(false);
   const [editingVertical, setEditingVertical] = useState<Vertical | null>(null);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(VERTICAL_COLORS[0]);
   const [newIcon, setNewIcon] = useState(ICONS[0]);
   const [saving, setSaving] = useState(false);
+
+  // Inline rename state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
 
   const current = verticals.find((v) => v.id === activeVertical);
+
+  useEffect(() => {
+    if (renamingId && renameRef.current) renameRef.current.focus();
+  }, [renamingId]);
 
   async function addVertical() {
     if (!newName.trim()) return;
@@ -67,12 +79,25 @@ export default function DashboardClient({ verticals: initialVerticals, profile, 
     setEditingVertical(null);
   }
 
+  async function saveInlineRename() {
+    if (!renamingId || !renameValue.trim()) { setRenamingId(null); return; }
+    const { data } = await supabase
+      .from("verticals")
+      .update({ name: renameValue.trim() })
+      .eq("id", renamingId)
+      .select()
+      .single();
+    if (data) setVerticals(verticals.map((v) => (v.id === data.id ? data : v)));
+    setRenamingId(null);
+  }
+
   async function deleteVertical(id: string) {
     if (!confirm("Delete this vertical? All associated data will also be deleted.")) return;
     await supabase.from("verticals").delete().eq("id", id);
     const updated = verticals.filter((v) => v.id !== id);
     setVerticals(updated);
-    if (activeVertical === id) setActiveVertical(updated[0]?.id || "");
+    setActiveVertical(updated[0]?.id || OVERVIEW_ID);
+    setEditingVertical(null);
   }
 
   function openEdit(v: Vertical) {
@@ -82,28 +107,10 @@ export default function DashboardClient({ verticals: initialVerticals, profile, 
     setNewIcon(v.icon);
   }
 
-  if (verticals.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="text-center max-w-sm">
-          <div className="text-5xl mb-4">🏢</div>
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">No verticals yet</h2>
-          <p className="text-slate-500 text-sm mb-6">Create your first vertical to get started with your workspace.</p>
-          <button onClick={() => setShowAddVertical(true)} className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-            <Plus className="w-4 h-4" /> Add Vertical
-          </button>
-          {showAddVertical && (
-            <AddVerticalModal
-              name={newName} setName={setNewName}
-              color={newColor} setColor={setNewColor}
-              icon={newIcon} setIcon={setNewIcon}
-              onSave={addVertical} onClose={() => setShowAddVertical(false)}
-              saving={saving}
-            />
-          )}
-        </div>
-      </div>
-    );
+  function startRename(v: Vertical, e: React.MouseEvent) {
+    e.stopPropagation();
+    setRenamingId(v.id);
+    setRenameValue(v.name);
   }
 
   return (
@@ -111,28 +118,60 @@ export default function DashboardClient({ verticals: initialVerticals, profile, 
       {/* Vertical Tabs */}
       <div className="bg-white border-b border-slate-200 px-4 flex items-center gap-1 overflow-x-auto">
         <div className="flex items-center gap-1 py-2 flex-1 min-w-0">
+          {/* Overview tab */}
+          <button
+            onClick={() => setActiveVertical(OVERVIEW_ID)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+              activeVertical === OVERVIEW_ID
+                ? "bg-slate-800 text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>Overview</span>
+          </button>
+
           {verticals.map((v) => (
-            <button
-              key={v.id}
-              onClick={() => setActiveVertical(v.id)}
-              className={`group relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-                activeVertical === v.id
-                  ? "text-white shadow-sm"
-                  : "text-slate-600 hover:bg-slate-100"
-              }`}
-              style={activeVertical === v.id ? { backgroundColor: v.color } : {}}
-            >
-              <span>{v.icon}</span>
-              <span>{v.name}</span>
-              {profile.role === "admin" && activeVertical === v.id && (
+            <div key={v.id} className="relative flex items-center">
+              {renamingId === v.id ? (
+                <input
+                  ref={renameRef}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={saveInlineRename}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveInlineRename();
+                    if (e.key === "Escape") setRenamingId(null);
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium border-2 border-indigo-400 outline-none w-32"
+                  style={{ backgroundColor: `${v.color}15` }}
+                />
+              ) : (
                 <button
-                  onClick={(e) => { e.stopPropagation(); openEdit(v); }}
-                  className="ml-1 opacity-70 hover:opacity-100 transition-opacity"
+                  onClick={() => setActiveVertical(v.id)}
+                  onDoubleClick={(e) => profile.role === "admin" && startRename(v, e)}
+                  title={profile.role === "admin" ? "Double-click to rename" : v.name}
+                  className={`group flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                    activeVertical === v.id
+                      ? "text-white shadow-sm"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                  style={activeVertical === v.id ? { backgroundColor: v.color } : {}}
                 >
-                  <Settings2 className="w-3 h-3" />
+                  <span>{v.icon}</span>
+                  <span>{v.name}</span>
+                  {profile.role === "admin" && activeVertical === v.id && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEdit(v); }}
+                      className="ml-1 opacity-60 hover:opacity-100 transition-opacity"
+                      title="Edit icon & color"
+                    >
+                      <Settings2 className="w-3 h-3" />
+                    </button>
+                  )}
                 </button>
               )}
-            </button>
+            </div>
           ))}
         </div>
         {profile.role === "admin" && (
@@ -146,50 +185,65 @@ export default function DashboardClient({ verticals: initialVerticals, profile, 
       </div>
 
       {/* Content */}
-      {current && (
-        <div className="flex-1 overflow-y-auto p-5">
-          <div className="max-w-7xl mx-auto">
-            {/* Vertical Header */}
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
-                style={{ backgroundColor: `${current.color}20` }}>
-                {current.icon}
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="max-w-7xl mx-auto">
+          {activeVertical === OVERVIEW_ID ? (
+            <>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
+                  <LayoutDashboard className="w-5 h-5 text-slate-600" />
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold text-slate-900">Overview</h1>
+                  <p className="text-sm text-slate-400">All verticals at a glance</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">{current.name}</h1>
-                <p className="text-sm text-slate-400">Vertical Workspace</p>
-              </div>
-            </div>
-
-            {/* Grid Layout */}
-            <div className="grid grid-cols-12 gap-4">
-              {/* Row 1: Todos + Pending Discussions + Meetings */}
-              <div className="col-span-12 lg:col-span-4">
-                <TodosModule verticalId={current.id} userId={userId} members={members} />
-              </div>
-              <div className="col-span-12 lg:col-span-4">
-                <DiscussionsModule verticalId={current.id} userId={userId} members={members} />
-              </div>
-              <div className="col-span-12 lg:col-span-4">
-                <MeetingsModule verticalId={current.id} userId={userId} members={members} />
-              </div>
-
-              {/* Row 2: Notes + Team Discussions */}
-              <div className="col-span-12 lg:col-span-5">
-                <NotesModule verticalId={current.id} userId={userId} />
-              </div>
-              <div className="col-span-12 lg:col-span-7">
-                <TeamDiscussionsModule verticalId={current.id} userId={userId} members={members} profile={profile} />
+              <OverviewModule verticals={verticals} onSelectVertical={setActiveVertical} />
+            </>
+          ) : current ? (
+            <>
+              {/* Vertical Header */}
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
+                  style={{ backgroundColor: `${current.color}20` }}>
+                  {current.icon}
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold text-slate-900">{current.name}</h1>
+                  <p className="text-sm text-slate-400">Vertical Workspace</p>
+                </div>
               </div>
 
-              {/* Row 3: Mini Pipeline */}
-              <div className="col-span-12">
-                <VerticalPipelineModule verticalId={current.id} members={members} verticalColor={current.color} />
+              {/* Grid Layout */}
+              <div className="grid grid-cols-12 gap-4">
+                <div className="col-span-12 lg:col-span-4">
+                  <TodosModule verticalId={current.id} userId={userId} members={members} />
+                </div>
+                <div className="col-span-12 lg:col-span-4">
+                  <DiscussionsModule verticalId={current.id} userId={userId} members={[]} />
+                </div>
+                <div className="col-span-12 lg:col-span-4">
+                  <MeetingsModule verticalId={current.id} userId={userId} members={members} />
+                </div>
+
+                <div className="col-span-12 lg:col-span-4">
+                  <NotesModule verticalId={current.id} userId={userId} />
+                </div>
+                <div className="col-span-12 lg:col-span-4">
+                  <IdeaDumpModule verticalId={current.id} userId={userId} />
+                </div>
+                <div className="col-span-12 lg:col-span-4">
+                  <VerticalPipelineModule verticalId={current.id} members={members} verticalColor={current.color} />
+                </div>
+
+                <div className="col-span-12">
+                  <TeamDiscussionsModule verticalId={current.id} userId={userId} members={members} profile={profile} />
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          ) : null}
         </div>
-      )}
+      </div>
 
       {/* Modals */}
       {showAddVertical && (
@@ -210,7 +264,7 @@ export default function DashboardClient({ verticals: initialVerticals, profile, 
           onSave={saveVerticalEdit}
           onClose={() => setEditingVertical(null)}
           saving={saving}
-          onDelete={() => deleteVertical(editingVertical.id)}
+          onDelete={profile.role === "admin" ? () => deleteVertical(editingVertical.id) : undefined}
         />
       )}
     </div>
@@ -229,11 +283,11 @@ function AddVerticalModal({
   onSave: () => void; onClose: () => void;
   saving: boolean; onDelete?: () => void;
 }) {
-  const ICONS = ["📺", "📻", "🎬", "🎙️", "📱", "💻", "🌐", "📢", "🎯", "🏢", "📊", "💼"];
+  const ICONS = ["📺", "📻", "🎬", "🎙️", "📱", "💻", "🌐", "📢", "🎯", "🏢", "📊", "💼", "💡", "🎨", "🚀"];
 
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-fade-in">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between p-5 border-b border-slate-100">
           <h3 className="font-semibold text-slate-900">{title}</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
@@ -247,7 +301,7 @@ function AddVerticalModal({
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Digital, Television, Radio"
+              placeholder="e.g. Social Media, Distribution"
               className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               onKeyDown={(e) => e.key === "Enter" && onSave()}
             />

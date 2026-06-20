@@ -3,13 +3,15 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Shield, UserPlus, Users, Mail, X, Check, Crown, User, Calendar, Link2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Shield, UserPlus, Users, Mail, X, Check, Crown, User, Calendar, Link2, CheckCircle2, AlertCircle, Briefcase } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
+import HRAdminClient from "@/components/admin/HRAdminClient";
 
 interface Props { members: Profile[]; currentUser: Profile; }
 
 export default function AdminClient({ members: initialMembers, currentUser }: Props) {
+  const [adminTab, setAdminTab] = useState<"team" | "hr">("team");
   const [members, setMembers] = useState<Profile[]>(initialMembers);
   const [calConnected, setCalConnected] = useState(!!currentUser.google_calendar_email);
   const [calEmail, setCalEmail] = useState(currentUser.google_calendar_email || "");
@@ -98,6 +100,18 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
           </button>
         </div>
 
+        {/* Admin Tabs */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit mb-6">
+          <button onClick={() => setAdminTab("team")}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${adminTab === "team" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-800"}`}>
+            <Users className="w-4 h-4" /> Team & Access
+          </button>
+          <button onClick={() => setAdminTab("hr")}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${adminTab === "hr" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-800"}`}>
+            <Briefcase className="w-4 h-4" /> HR Management
+          </button>
+        </div>
+
         {message && (
           <div className={`mb-4 p-3 rounded-lg text-sm flex items-center gap-2 ${
             message.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"
@@ -106,6 +120,13 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
             {message.text}
           </div>
         )}
+
+        {/* HR Management Tab */}
+        {adminTab === "hr" && (
+          <HRAdminClient adminProfile={currentUser} members={members} />
+        )}
+
+        {adminTab === "team" && (<>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-6">
@@ -225,6 +246,8 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
             </tbody>
           </table>
         </div>
+
+        </>)}
 
         {/* Invite Modal */}
         {showInvite && (
