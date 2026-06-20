@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Network, Database, FileText } from "lucide-react";
 import type { Profile, Vertical } from "@/lib/types";
 import InfluencerDB from "./InfluencerDB";
@@ -18,8 +19,20 @@ const TABS = [
 ];
 
 export default function DistroHub({ profile, userId, verticals }: Props) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("db");
   const [editingBriefId, setEditingBriefId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const briefId = searchParams.get("brief");
+    if (briefId) {
+      setEditingBriefId(briefId);
+      setActiveTab("brief");
+      // Remove query param from URL without navigation
+      router.replace("/dashboard/distro", { scroll: false });
+    }
+  }, []);
 
   function handleTabChange(id: string) {
     if (id !== "brief") setEditingBriefId(null);

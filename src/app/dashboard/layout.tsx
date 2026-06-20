@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
+import ChatWidget from "@/components/chat/ChatWidget";
 import type { Profile } from "@/lib/types";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -21,6 +22,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <main className="flex-1 overflow-hidden flex flex-col">
         {children}
       </main>
+      <ChatWidget />
     </div>
   );
 }

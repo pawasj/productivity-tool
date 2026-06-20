@@ -1,17 +1,18 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import {
-  TrendingUp, Plus, X, Search, Filter, ChevronDown,
-  Building2, User, Phone, Mail, MapPin, Calendar, DollarSign,
-  Edit3, Trash2, Check, MoreHorizontal, RefreshCw
+  TrendingUp, Plus, X, Search, FileText,
+  Building2, MapPin, Edit3, Trash2, ExternalLink,
 } from "lucide-react";
 import type { Lead, Profile, Vertical } from "@/lib/types";
-import { STATUS_COLORS, formatDate, formatDateTime } from "@/lib/utils";
+import { STATUS_COLORS, formatDate } from "@/lib/utils";
 
 interface Props {
   initialLeads: Lead[];
+  initialBriefs: Record<string, unknown>[];
   members: Profile[];
   verticals: Vertical[];
   profile: Profile;
@@ -36,7 +37,12 @@ const EMPTY_LEAD: FormState = {
   deal_value: "", latest_update: "", notes: "", next_follow_up: "",
 };
 
-export default function PipelineClient({ initialLeads, members, verticals, profile, userId }: Props) {
+// Unified row type for display
+type PipelineRow =
+  | { kind: "lead"; data: Lead }
+  | { kind: "brief"; data: Record<string, unknown> };
+
+export default function PipelineClient({ initialLeads, initialBriefs, members, verticals, profile, userId }: Props) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads);
   const [showForm, setShowForm] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -46,27 +52,35 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterVertical, setFilterVertical] = useState<string>("");
   const [filterPoc, setFilterPoc] = useState<string>("");
-  const [expandedLead, setExpandedLead] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<"all" | "leads" | "briefs">("all");
   const supabase = createClient();
+  const router = useRouter();
 
-  const filtered = useMemo(() => {
-    return leads.filter((l) => {
-      const matchSearch = !search || [l.company_name, l.contact_name, l.location, l.latest_update]
-        .some((v) => v?.toLowerCase().includes(search.toLowerCase()));
-      const matchStatus = !filterStatus || l.status === filterStatus;
-      const matchVertical = !filterVertical || l.vertical_id === filterVertical;
-      const matchPoc = !filterPoc || l.our_poc_id === filterPoc;
-      return matchSearch && matchStatus && matchVertical && matchPoc;
+  const rows = useMemo((): PipelineRow[] => {
+    const leadRows: PipelineRow[] = leads.map(l => ({ kind: "lead", data: l }));
+    const briefRows: PipelineRow[] = initialBriefs.map(b => ({ kind: "brief", data: b }));
+    return [...leadRows, ...briefRows].filter(row => {
+      const name = row.kind === "lead"
+        ? (row.data as Lead).company_name
+        : String(row.data.client_name || "");
+      const matchSearch = !search || name.toLowerCase().includes(search.toLowerCase());
+      const matchType = filterType === "all" || (filterType === "leads" && row.kind === "lead") || (filterType === "briefs" && row.kind === "brief");
+      const matchStatus = !filterStatus || (row.kind === "lead" && (row.data as Lead).status === filterStatus);
+      const matchVertical = !filterVertical || (row.kind === "lead"
+        ? (row.data as Lead).vertical_id === filterVertical
+        : row.data.vertical_id === filterVertical);
+      const matchPoc = !filterPoc || (row.kind === "lead" && (row.data as Lead).our_poc_id === filterPoc);
+      return matchSearch && matchType && matchStatus && matchVertical && matchPoc;
     });
-  }, [leads, search, filterStatus, filterVertical, filterPoc]);
+  }, [leads, initialBriefs, search, filterType, filterStatus, filterVertical, filterPoc]);
 
   const stats = useMemo(() => {
-    const active = leads.filter((l) => !["won", "lost"].includes(l.status));
-    const won = leads.filter((l) => l.status === "won");
+    const active = leads.filter(l => !["won", "lost"].includes(l.status));
+    const won = leads.filter(l => l.status === "won");
     const totalPipeline = active.reduce((s, l) => s + (l.deal_value || 0), 0);
     const totalWon = won.reduce((s, l) => s + (l.deal_value || 0), 0);
-    return { active: active.length, won: won.length, totalPipeline, totalWon };
-  }, [leads]);
+    return { active: active.length, won: won.length, totalPipeline, totalWon, briefCount: initialBriefs.length };
+  }, [leads, initialBriefs]);
 
   function openAdd() {
     setForm({ ...EMPTY_LEAD, our_poc_id: userId, vertical_id: verticals[0]?.id || "" });
@@ -115,7 +129,7 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
     if (editingLead) {
       const { data } = await supabase.from("leads").update(payload).eq("id", editingLead.id)
         .select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)").single();
-      if (data) setLeads(leads.map((l) => l.id === editingLead.id ? data as Lead : l));
+      if (data) setLeads(leads.map(l => l.id === editingLead.id ? data as Lead : l));
     } else {
       const { data } = await supabase.from("leads").insert(payload)
         .select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)").single();
@@ -129,7 +143,7 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
   async function deleteLead(id: string) {
     if (!confirm("Delete this lead?")) return;
     await supabase.from("leads").delete().eq("id", id);
-    setLeads(leads.filter((l) => l.id !== id));
+    setLeads(leads.filter(l => l.id !== id));
   }
 
   async function updateStatus(lead: Lead, status: Lead["status"]) {
@@ -138,7 +152,11 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
       .eq("id", lead.id)
       .select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)")
       .single();
-    if (data) setLeads(leads.map((l) => l.id === lead.id ? data as Lead : l));
+    if (data) setLeads(leads.map(l => l.id === lead.id ? data as Lead : l));
+  }
+
+  function openBriefInDistro(briefId: string, tab?: "brief") {
+    router.push(`/dashboard/distro?brief=${briefId}${tab ? `&tab=${tab}` : ""}`);
   }
 
   return (
@@ -152,7 +170,7 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
             </div>
             <div>
               <h1 className="text-lg font-bold text-slate-900">Sales Pipeline</h1>
-              <p className="text-xs text-slate-400">CRM — Track every lead to closure</p>
+              <p className="text-xs text-slate-400">All leads — manual and campaign briefs — in one place</p>
             </div>
           </div>
           <button onClick={openAdd} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
@@ -161,10 +179,11 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-5 gap-3">
           {[
             { label: "Active Leads", value: stats.active, color: "indigo" },
             { label: "Won", value: stats.won, color: "emerald" },
+            { label: "Campaign Briefs", value: stats.briefCount, color: "violet" },
             { label: "Pipeline Value", value: `₹${(stats.totalPipeline / 100000).toFixed(1)}L`, color: "blue" },
             { label: "Won Revenue", value: `₹${(stats.totalWon / 100000).toFixed(1)}L`, color: "green" },
           ].map(({ label, value, color }) => (
@@ -181,33 +200,48 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
           <input
-            value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search leads…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search company / client…"
             className="w-full pl-9 pr-4 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
           />
         </div>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600">
-          <option value="">All Statuses</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-        </select>
-        <select value={filterVertical} onChange={(e) => setFilterVertical(e.target.value)}
+
+        {/* Type tabs */}
+        <div className="flex gap-1 bg-slate-100 rounded-lg p-0.5">
+          {(["all", "leads", "briefs"] as const).map(t => (
+            <button key={t} onClick={() => setFilterType(t)}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all capitalize ${filterType === t ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+              {t === "all" ? "All" : t === "leads" ? "Manual Leads" : "Campaign Briefs"}
+            </button>
+          ))}
+        </div>
+
+        {filterType !== "briefs" && (
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600">
+            <option value="">All Statuses</option>
+            {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+          </select>
+        )}
+        <select value={filterVertical} onChange={e => setFilterVertical(e.target.value)}
           className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600">
           <option value="">All Verticals</option>
-          {verticals.map((v) => <option key={v.id} value={v.id}>{v.icon} {v.name}</option>)}
+          {verticals.map(v => <option key={v.id} value={v.id}>{v.icon} {v.name}</option>)}
         </select>
-        <select value={filterPoc} onChange={(e) => setFilterPoc(e.target.value)}
-          className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600">
-          <option value="">All POCs</option>
-          {members.map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}
-        </select>
-        {(search || filterStatus || filterVertical || filterPoc) && (
-          <button onClick={() => { setSearch(""); setFilterStatus(""); setFilterVertical(""); setFilterPoc(""); }}
+        {filterType !== "briefs" && (
+          <select value={filterPoc} onChange={e => setFilterPoc(e.target.value)}
+            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600">
+            <option value="">All POCs</option>
+            {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+          </select>
+        )}
+        {(search || filterStatus || filterVertical || filterPoc || filterType !== "all") && (
+          <button onClick={() => { setSearch(""); setFilterStatus(""); setFilterVertical(""); setFilterPoc(""); setFilterType("all"); }}
             className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-2 py-1.5 hover:bg-slate-100 rounded-lg transition-colors">
             <X className="w-3.5 h-3.5" /> Clear
           </button>
         )}
-        <span className="text-xs text-slate-400 ml-auto">{filtered.length} lead{filtered.length !== 1 ? "s" : ""}</span>
+        <span className="text-xs text-slate-400 ml-auto">{rows.length} entr{rows.length !== 1 ? "ies" : "y"}</span>
       </div>
 
       {/* Table */}
@@ -216,27 +250,37 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                {["Company", "Contact", "Vertical", "Status", "Our POC", "Value", "Next Follow-up", "Last Update", ""].map((h) => (
-                  <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>
-                ))}
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Type</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Company / Client</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Contact / Industry</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Vertical</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Status</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">POC / By</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Value</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Date</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filtered.length === 0 && (
+              {rows.length === 0 && (
                 <tr>
                   <td colSpan={9} className="text-center py-12 text-slate-400">
                     <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                    <p className="text-sm font-medium">No leads found</p>
-                    <p className="text-xs mt-1">Try adjusting your filters or add a new lead</p>
+                    <p className="text-sm font-medium">No entries found</p>
+                    <p className="text-xs mt-1">Add a lead or create a campaign brief in Distribution Hub</p>
                   </td>
                 </tr>
               )}
-              {filtered.map((lead) => {
-                const vertical = verticals.find((v) => v.id === lead.vertical_id);
-                return (
-                  <tr key={lead.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="px-4 py-3">
-                      <div>
+              {rows.map((row, idx) => {
+                if (row.kind === "lead") {
+                  const lead = row.data;
+                  const vertical = verticals.find(v => v.id === lead.vertical_id);
+                  return (
+                    <tr key={`lead-${lead.id}`} className="hover:bg-slate-50 transition-colors group">
+                      <td className="px-4 py-3">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">Lead</span>
+                      </td>
+                      <td className="px-4 py-3">
                         <p className="font-medium text-slate-900 text-sm">{lead.company_name}</p>
                         {lead.location && (
                           <div className="flex items-center gap-1 mt-0.5">
@@ -244,51 +288,123 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
                             <span className="text-xs text-slate-400">{lead.location}</span>
                           </div>
                         )}
-                      </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm text-slate-700">{lead.contact_name}</p>
+                        {lead.contact_email && <p className="text-xs text-slate-400">{lead.contact_email}</p>}
+                        {lead.contact_phone && <p className="text-xs text-slate-400">{lead.contact_phone}</p>}
+                      </td>
+                      <td className="px-4 py-3">
+                        {vertical && (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                            style={{ backgroundColor: `${vertical.color}20`, color: vertical.color }}>
+                            {vertical.icon} {vertical.name}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          value={lead.status}
+                          onChange={e => updateStatus(lead, e.target.value as Lead["status"])}
+                          className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 cursor-pointer focus:outline-none ${STATUS_COLORS[lead.status]}`}>
+                          {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600">
+                        {(lead.our_poc as Profile)?.full_name || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-700 font-medium">
+                        {lead.deal_value ? `₹${lead.deal_value.toLocaleString("en-IN")}` : "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-slate-500">{lead.next_follow_up ? formatDate(lead.next_follow_up) : "—"}</p>
+                        <p className="text-xs text-slate-400">{formatDate(lead.updated_at)}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => openEdit(lead)} className="p-1.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors" title="Edit lead">
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => deleteLead(lead.id)} className="p-1.5 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-colors" title="Delete">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+
+                // Brief row
+                const brief = row.data;
+                const vertical = verticals.find(v => v.id === brief.vertical_id);
+                const briefVertical = (brief.vertical as Record<string, unknown>) || null;
+                const creator = (brief.creator as Record<string, unknown>) || null;
+                return (
+                  <tr key={`brief-${brief.id}`} className="hover:bg-violet-50/30 transition-colors group">
+                    <td className="px-4 py-3">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium flex items-center gap-1 w-fit">
+                        <FileText className="w-3 h-3" /> Brief
+                      </span>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="text-sm text-slate-700">{lead.contact_name}</p>
-                      {lead.contact_email && <p className="text-xs text-slate-400">{lead.contact_email}</p>}
-                      {lead.contact_phone && <p className="text-xs text-slate-400">{lead.contact_phone}</p>}
+                      <p className="font-medium text-slate-900 text-sm">{String(brief.client_name || "—")}</p>
+                      <p className="text-xs text-slate-400 capitalize">{String(brief.campaign_type || "")}</p>
                     </td>
                     <td className="px-4 py-3">
-                      {vertical && (
+                      <p className="text-xs text-slate-600">{String(brief.industry || "—")}</p>
+                      {Boolean(brief.target_audience) && (
+                        <p className="text-xs text-slate-400 max-w-40 truncate">{String(brief.target_audience)}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {(briefVertical || vertical) && (
                         <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-                          style={{ backgroundColor: `${vertical.color}20`, color: vertical.color }}>
-                          {vertical.icon} {vertical.name}
+                          style={{
+                            backgroundColor: `${(briefVertical?.color || vertical?.color) as string}20`,
+                            color: (briefVertical?.color || vertical?.color) as string,
+                          }}>
+                          {String(briefVertical?.icon || vertical?.icon || "")} {String(briefVertical?.name || vertical?.name || "")}
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <select
-                        value={lead.status}
-                        onChange={(e) => updateStatus(lead, e.target.value as Lead["status"])}
-                        className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 cursor-pointer focus:outline-none ${STATUS_COLORS[lead.status]}`}
-                      >
-                        {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-                      </select>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-600 font-medium">Campaign Brief</span>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
-                      {(lead.our_poc as Profile)?.full_name || "—"}
+                      {String(creator?.full_name || "—")}
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium">
-                      {lead.deal_value ? `₹${lead.deal_value.toLocaleString("en-IN")}` : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">
-                      {lead.next_follow_up ? formatDate(lead.next_follow_up) : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-xs text-slate-500 max-w-32 truncate">{lead.latest_update || "—"}</p>
-                      <p className="text-xs text-slate-400">{formatDate(lead.updated_at)}</p>
+                    <td className="px-4 py-3 text-sm text-slate-500">
+                      {brief.total_budget
+                        ? `₹${Number(brief.total_budget).toLocaleString("en-IN")}`
+                        : brief.platforms
+                          ? <span className="text-xs text-slate-400">Plan pending</span>
+                          : "—"
+                      }
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openEdit(lead)} className="p-1.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors">
-                          <Edit3 className="w-3.5 h-3.5" />
+                      <p className="text-xs text-slate-400">{formatDate(String(brief.created_at || ""))}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => openBriefInDistro(String(brief.id))}
+                          className="flex items-center gap-1 text-xs px-2.5 py-1 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium whitespace-nowrap">
+                          <ExternalLink className="w-3 h-3" /> Open Brief
                         </button>
-                        <button onClick={() => deleteLead(lead.id)} className="p-1.5 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {!Boolean(brief.media_plan) && (
+                          <button
+                            onClick={() => openBriefInDistro(String(brief.id))}
+                            className="flex items-center gap-1 text-xs px-2.5 py-1 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors font-medium whitespace-nowrap">
+                            + Media Plan
+                          </button>
+                        )}
+                        {Boolean(brief.media_plan) && !Boolean(brief.narrative) && (
+                          <button
+                            onClick={() => openBriefInDistro(String(brief.id))}
+                            className="flex items-center gap-1 text-xs px-2.5 py-1 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors font-medium whitespace-nowrap">
+                            + Narrative
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -299,7 +415,7 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
+      {/* Add/Edit Lead Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
@@ -312,76 +428,76 @@ export default function PipelineClient({ initialLeads, members, verticals, profi
             <div className="p-5 grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Company Name *</label>
-                <input value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })}
+                <input value={form.company_name} onChange={e => setForm({ ...form, company_name: e.target.value })}
                   placeholder="e.g. Reliance Brands"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Contact Name *</label>
-                <input value={form.contact_name} onChange={(e) => setForm({ ...form, contact_name: e.target.value })}
+                <input value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })}
                   placeholder="Client POC name"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Contact Email</label>
-                <input type="email" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
+                <input type="email" value={form.contact_email} onChange={e => setForm({ ...form, contact_email: e.target.value })}
                   placeholder="poc@company.com"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Contact Phone</label>
-                <input value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })}
+                <input value={form.contact_phone} onChange={e => setForm({ ...form, contact_phone: e.target.value })}
                   placeholder="+91 98765 43210"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
-                <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })}
+                <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })}
                   placeholder="City / Region"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Vertical</label>
-                <select value={form.vertical_id} onChange={(e) => setForm({ ...form, vertical_id: e.target.value })}
+                <select value={form.vertical_id} onChange={e => setForm({ ...form, vertical_id: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  {verticals.map((v) => <option key={v.id} value={v.id}>{v.icon} {v.name}</option>)}
+                  {verticals.map(v => <option key={v.id} value={v.id}>{v.icon} {v.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Lead["status"] })}
+                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as Lead["status"] })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                  {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Our POC</label>
-                <select value={form.our_poc_id} onChange={(e) => setForm({ ...form, our_poc_id: e.target.value })}
+                <select value={form.our_poc_id} onChange={e => setForm({ ...form, our_poc_id: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   <option value="">Select POC</option>
-                  {members.map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                  {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Deal Value (₹)</label>
-                <input type="number" value={form.deal_value} onChange={(e) => setForm({ ...form, deal_value: e.target.value })}
+                <input type="number" value={form.deal_value} onChange={e => setForm({ ...form, deal_value: e.target.value })}
                   placeholder="500000"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Next Follow-up</label>
-                <input type="datetime-local" value={form.next_follow_up} onChange={(e) => setForm({ ...form, next_follow_up: e.target.value })}
+                <input type="datetime-local" value={form.next_follow_up} onChange={e => setForm({ ...form, next_follow_up: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Latest Update</label>
-                <input value={form.latest_update} onChange={(e) => setForm({ ...form, latest_update: e.target.value })}
+                <input value={form.latest_update} onChange={e => setForm({ ...form, latest_update: e.target.value })}
                   placeholder="What's the latest on this lead?"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
-                <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
                   placeholder="Additional context, requirements, history…"
                   rows={3}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />

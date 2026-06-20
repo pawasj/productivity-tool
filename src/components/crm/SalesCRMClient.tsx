@@ -55,6 +55,7 @@ export default function SalesCRMClient({ initialLeads, members, verticals, profi
         {activeTab === "pipeline" && (
           <PipelineClient
             initialLeads={initialLeads}
+            initialBriefs={[]}
             members={members}
             verticals={verticals}
             profile={profile}
