@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Loader2, Lock, Mail, Zap } from "lucide-react";
+import Image from "next/image";
+import { Loader2, Lock, Mail } from "lucide-react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -34,11 +35,10 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-indigo-600 rounded-2xl mb-4 shadow-lg shadow-indigo-200">
-            <Zap className="w-7 h-7 text-white" />
+          <div className="flex justify-center mb-5">
+            <Image src="/bcc-logo.png" alt="BCC Media Network" width={220} height={60} className="object-contain" priority />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">BCC Media Network</h1>
-          <p className="text-slate-500 mt-1 text-sm">Internal Workspace</p>
+          <p className="text-slate-500 text-sm">Internal Workspace</p>
         </div>
 
         {/* Card */}

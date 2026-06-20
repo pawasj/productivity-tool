@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Shield, UserPlus, Users, Mail, Trash2, X, Check, RefreshCw, Crown, User } from "lucide-react";
+import { Shield, UserPlus, Users, Mail, X, Check, Crown, User, Calendar, Link2, CheckCircle2, AlertCircle } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
@@ -10,6 +11,20 @@ interface Props { members: Profile[]; currentUser: Profile; }
 
 export default function AdminClient({ members: initialMembers, currentUser }: Props) {
   const [members, setMembers] = useState<Profile[]>(initialMembers);
+  const [calConnected, setCalConnected] = useState(!!currentUser.google_calendar_email);
+  const [calEmail, setCalEmail] = useState(currentUser.google_calendar_email || "");
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("cal_connected") === "1") {
+      setCalConnected(true);
+      // Re-fetch own profile to get email
+      const supabase = createClient();
+      supabase.from("profiles").select("google_calendar_email").eq("id", currentUser.id).single().then(({ data }) => {
+        if (data?.google_calendar_email) setCalEmail(data.google_calendar_email as string);
+      });
+    }
+  }, [searchParams]);
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
@@ -24,31 +39,34 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
     setSaving(true);
     setMessage(null);
 
-    // Create user via Supabase auth admin (requires service role — using signUp here for simplicity)
-    const { data, error } = await supabase.auth.signUp({
-      email: inviteEmail.trim(),
-      password: invitePassword,
-      options: {
-        data: { full_name: inviteName.trim(), role: inviteRole },
-      },
+    const res = await fetch("/api/admin/create-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: inviteEmail.trim(),
+        password: invitePassword,
+        full_name: inviteName.trim(),
+        role: inviteRole,
+      }),
     });
 
-    if (error) {
-      setMessage({ type: "error", text: error.message });
+    const result = await res.json();
+
+    if (!res.ok) {
+      setMessage({ type: "error", text: result.error || "Failed to create user" });
       setSaving(false);
       return;
     }
 
-    if (data.user) {
-      // Upsert profile
-      const { data: profile } = await supabase
-        .from("profiles")
-        .upsert({ id: data.user.id, email: inviteEmail.trim(), full_name: inviteName.trim(), role: inviteRole })
-        .select().single();
-      if (profile) setMembers([...members, profile as Profile]);
-    }
+    // Refresh members list
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", result.user.id)
+      .single();
+    if (profile) setMembers([...members, profile as Profile]);
 
-    setMessage({ type: "success", text: `Invitation sent to ${inviteEmail}` });
+    setMessage({ type: "success", text: `User ${inviteEmail} created. They can log in immediately at productivity-tool-one.vercel.app with the password you set. No email confirmation needed.` });
     setSaving(false);
     setShowInvite(false);
     setInviteEmail(""); setInviteName(""); setInvitePassword(""); setInviteRole("member");
@@ -104,6 +122,47 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
               <p className={`text-xs text-${color}-600 font-medium`}>{label}</p>
             </div>
           ))}
+        </div>
+
+        {/* Google Calendar Section */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
+              <Calendar className="w-4.5 h-4.5 text-blue-600" style={{ width: 18, height: 18 }} />
+            </div>
+            <div>
+              <h2 className="font-semibold text-slate-800">Google Calendar</h2>
+              <p className="text-xs text-slate-400">Connect your calendar to see upcoming meetings in the Overview</p>
+            </div>
+          </div>
+
+          {searchParams.get("cal_error") && (
+            <div className="mb-3 flex items-center gap-2 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {searchParams.get("cal_error") === "access_denied" ? "Calendar access was denied." : "Failed to connect calendar. Please try again."}
+            </div>
+          )}
+
+          {calConnected ? (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex-1">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                Connected as <strong>{calEmail}</strong>
+              </div>
+              <a href="/api/auth/google-calendar"
+                className="text-xs text-slate-500 hover:text-slate-700 border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors">
+                Reconnect
+              </a>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-slate-500 flex-1">Connect your Google account to see upcoming meetings on your Overview.</p>
+              <a href="/api/auth/google-calendar"
+                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shrink-0">
+                <Link2 className="w-4 h-4" /> Connect Google Calendar
+              </a>
+            </div>
+          )}
         </div>
 
         {/* Members Table */}

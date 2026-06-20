@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import {
-  LayoutDashboard, TrendingUp, Users, Settings,
-  LogOut, Zap, ChevronRight, Shield,
+  LayoutDashboard, TrendingUp,
+  LogOut, ChevronRight, Shield, Network,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
+import NotificationBell from "./NotificationBell";
 
 interface SidebarProps {
   profile: Profile | null;
@@ -16,6 +18,7 @@ interface SidebarProps {
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/dashboard/pipeline", icon: TrendingUp, label: "Sales Pipeline" },
+  { href: "/dashboard/distro", icon: Network, label: "Distribution Hub" },
 ];
 
 export default function Sidebar({ profile }: SidebarProps) {
@@ -32,15 +35,10 @@ export default function Sidebar({ profile }: SidebarProps) {
   return (
     <aside className="w-60 bg-white border-r border-slate-200 flex flex-col h-full shrink-0">
       {/* Brand */}
-      <div className="p-5 border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-sm shadow-indigo-200">
-            <Zap className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
-          </div>
-          <div>
-            <div className="font-bold text-slate-900 text-sm leading-tight">BCC Media</div>
-            <div className="text-xs text-slate-400 leading-tight">Network</div>
-          </div>
+      <div className="px-4 py-3 border-b border-slate-100">
+        <div className="flex items-center justify-between">
+          <Image src="/bcc-logo.png" alt="BCC Media Network" width={130} height={36} className="object-contain" priority />
+          <NotificationBell />
         </div>
       </div>
 
@@ -51,7 +49,7 @@ export default function Sidebar({ profile }: SidebarProps) {
         </p>
         {navItems.map(({ href, icon: Icon, label }) => {
           const active = href === "/dashboard"
-            ? pathname === "/dashboard" || (pathname.startsWith("/dashboard") && !pathname.startsWith("/dashboard/pipeline") && !pathname.startsWith("/dashboard/admin"))
+            ? pathname === "/dashboard" || (pathname.startsWith("/dashboard") && !pathname.startsWith("/dashboard/pipeline") && !pathname.startsWith("/dashboard/admin") && !pathname.startsWith("/dashboard/distro"))
             : pathname.startsWith(href);
           return (
             <Link
