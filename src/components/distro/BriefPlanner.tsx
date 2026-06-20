@@ -165,8 +165,8 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
   const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
   const [discoveryPlatforms, setDiscoveryPlatforms] = useState<string[]>(["instagram", "youtube", "linkedin"]);
   const [discoveryContentType, setDiscoveryContentType] = useState<"creators" | "pages" | "both">("both");
-  const [discoveryGeo, setDiscoveryGeo] = useState("");
-  const [discoveryLanguage, setDiscoveryLanguage] = useState("");
+  const [discoveryGeos, setDiscoveryGeos] = useState<string[]>([]);
+  const [discoveryLanguages, setDiscoveryLanguages] = useState<string[]>([]);
   const [discoveryGeoMode, setDiscoveryGeoMode] = useState<"state" | "language">("state");
 
   // Margin modal state
@@ -327,8 +327,8 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
         body: JSON.stringify({
           brief: { ...brief, content_type: discoveryContentType },
           platforms: discoveryPlatforms,
-          geo: discoveryGeo || "",
-          language: discoveryLanguage || "",
+          geos: discoveryGeos,
+          languages: discoveryLanguages,
         }),
       });
       const json = await res.json();
@@ -618,8 +618,8 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
               {!discovering && discoveryPlatforms.length > 0 && (
                 <span className="text-xs text-slate-500 ml-2">
                   {discoveryPlatforms.join(", ")} · {discoveryContentType === "both" ? "creators + pages" : discoveryContentType}
-                  {discoveryGeo && <> · <span className="text-amber-600 font-medium">{discoveryGeo}</span></>}
-                  {discoveryLanguage && <> · <span className="text-amber-600 font-medium">{discoveryLanguage} content</span></>}
+                  {discoveryGeos.length > 0 && <> · <span className="text-amber-600 font-medium">{discoveryGeos.join(", ")}</span></>}
+                  {discoveryLanguages.length > 0 && <> · <span className="text-amber-600 font-medium">{discoveryLanguages.join(", ")} content</span></>}
                 </span>
               )}
             </div>
@@ -641,7 +641,7 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
                 <p className="text-sm font-medium text-slate-700">AI is researching the internet…</p>
                 <p className="text-xs text-slate-400 mt-0.5">
                   Searching {discoveryPlatforms.join(", ")} for {discoveryContentType === "both" ? "creators and pages" : discoveryContentType}
-                  {(discoveryGeo || discoveryLanguage) && ` · ${discoveryGeo || discoveryLanguage} specific`}
+                  {(discoveryGeos.length > 0 || discoveryLanguages.length > 0) && ` · ${[...discoveryGeos, ...discoveryLanguages].join(", ")} specific`}
                 </p>
               </div>
             </div>
@@ -915,12 +915,12 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
                 {/* Toggle: State or Language */}
                 <div className="flex gap-1 bg-slate-100 rounded-lg p-1 mb-3">
                   <button
-                    onClick={() => { setDiscoveryGeoMode("state"); setDiscoveryLanguage(""); }}
+                    onClick={() => setDiscoveryGeoMode("state")}
                     className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${discoveryGeoMode === "state" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
                     By State / City
                   </button>
                   <button
-                    onClick={() => { setDiscoveryGeoMode("language"); setDiscoveryGeo(""); }}
+                    onClick={() => setDiscoveryGeoMode("language")}
                     className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${discoveryGeoMode === "language" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
                     By Language
                   </button>
@@ -928,16 +928,34 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
 
                 {discoveryGeoMode === "state" ? (
                   <div>
-                    <select
-                      value={discoveryGeo}
-                      onChange={e => setDiscoveryGeo(e.target.value)}
-                      className="w-full px-3 py-2.5 border-2 border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-400 text-slate-700">
-                      <option value="">No state/city filter — national results</option>
-                      {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    {discoveryGeo && (
+                    <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                      {INDIAN_STATES.map(s => (
+                        <button
+                          key={s}
+                          onClick={() => setDiscoveryGeos(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}
+                          className={`text-left px-3 py-1.5 rounded-lg text-sm border-2 transition-all ${discoveryGeos.includes(s) ? "border-amber-400 bg-amber-50 text-amber-800 font-medium" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                    {discoveryGeos.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {discoveryGeos.map(g => (
+                          <span key={g} className="flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full font-medium">
+                            {g}
+                            <button onClick={() => setDiscoveryGeos(prev => prev.filter(x => x !== g))} className="hover:text-amber-900">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                        <button onClick={() => setDiscoveryGeos([])} className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1">
+                          Clear all
+                        </button>
+                      </div>
+                    )}
+                    {discoveryGeos.length > 0 && (
                       <p className="text-xs text-amber-700 mt-2 bg-amber-50 px-3 py-2 rounded-lg">
-                        Discovery will focus on creators based in or primarily covering <strong>{discoveryGeo}</strong> — including hyperlocal pages, regional news accounts, and state-specific communities.
+                        Discovery will focus on creators based in or primarily covering <strong>{discoveryGeos.join(", ")}</strong>.
                       </p>
                     )}
                   </div>
@@ -947,15 +965,30 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
                       {INDIAN_LANGUAGES.map(lang => (
                         <button
                           key={lang}
-                          onClick={() => setDiscoveryLanguage(prev => prev === lang ? "" : lang)}
-                          className={`py-2 px-3 rounded-xl text-sm font-medium border-2 transition-all ${discoveryLanguage === lang ? "border-amber-400 bg-amber-50 text-amber-800" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                          onClick={() => setDiscoveryLanguages(prev => prev.includes(lang) ? prev.filter(x => x !== lang) : [...prev, lang])}
+                          className={`py-2 px-3 rounded-xl text-sm font-medium border-2 transition-all ${discoveryLanguages.includes(lang) ? "border-amber-400 bg-amber-50 text-amber-800" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
                           {lang}
                         </button>
                       ))}
                     </div>
-                    {discoveryLanguage && (
-                      <p className="text-xs text-amber-700 mt-3 bg-amber-50 px-3 py-2 rounded-lg">
-                        Discovery will return creators who make content primarily in <strong>{discoveryLanguage}</strong> — including regional YouTubers, Instagram creators, newsletters, and communities.
+                    {discoveryLanguages.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {discoveryLanguages.map(l => (
+                          <span key={l} className="flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full font-medium">
+                            {l}
+                            <button onClick={() => setDiscoveryLanguages(prev => prev.filter(x => x !== l))} className="hover:text-amber-900">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                        <button onClick={() => setDiscoveryLanguages([])} className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1">
+                          Clear all
+                        </button>
+                      </div>
+                    )}
+                    {discoveryLanguages.length > 0 && (
+                      <p className="text-xs text-amber-700 mt-2 bg-amber-50 px-3 py-2 rounded-lg">
+                        Discovery will return creators making content in <strong>{discoveryLanguages.join(", ")}</strong>.
                       </p>
                     )}
                   </div>
@@ -972,7 +1005,9 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
               <button onClick={runDiscovery} disabled={discoveryPlatforms.length === 0}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors">
                 <Search className="w-4 h-4" />
-                {(discoveryGeo || discoveryLanguage) ? `Search ${discoveryGeo || discoveryLanguage} creators` : "Start Discovery"}
+                {(discoveryGeos.length > 0 || discoveryLanguages.length > 0)
+                  ? `Search ${[...discoveryGeos, ...discoveryLanguages].join(" + ")} creators`
+                  : "Start Discovery"}
               </button>
             </div>
           </div>

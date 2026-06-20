@@ -37,9 +37,11 @@ function buildPlatformSearchPlan(platforms: string[], brief: Record<string, stri
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { brief, platforms = ["instagram", "youtube", "linkedin"], geo = "", language = "" } = body;
+    const { brief, platforms = ["instagram", "youtube", "linkedin"], geos = [], languages = [] } = body;
     if (!brief?.brand_name) return NextResponse.json({ error: "brand_name required" }, { status: 400 });
 
+    const geo = (geos as string[]).join(", ");
+    const language = (languages as string[]).join(", ");
     const contentType = brief.content_type || "both";
     const geography = brief.target_geography || "India";
     const isRegional = !!(geo || language);
@@ -194,8 +196,10 @@ type: "creator" for individual people, "page" for communities/channels/newslette
   } catch (err: unknown) {
     console.error("discover error:", err);
     try {
-      const body2 = await req.clone().json().catch(() => ({})) as { brief?: Record<string, string>; platforms?: string[]; geo?: string; language?: string };
-      return await fallbackDiscovery(body2.brief || {}, "both", "India", body2.platforms || ["instagram", "youtube", "linkedin"], body2.geo || "", body2.language || "");
+      const body2 = await req.clone().json().catch(() => ({})) as { brief?: Record<string, string>; platforms?: string[]; geos?: string[]; languages?: string[] };
+      const g2 = (body2.geos || []).join(", ");
+      const l2 = (body2.languages || []).join(", ");
+      return await fallbackDiscovery(body2.brief || {}, "both", "India", body2.platforms || ["instagram", "youtube", "linkedin"], g2, l2);
     } catch {
       return NextResponse.json({ error: String(err) }, { status: 500 });
     }
