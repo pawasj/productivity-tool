@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Network, Database, FileText, BarChart3, Activity } from "lucide-react";
+import { Network, Database, FileText, BarChart3 } from "lucide-react";
 import type { Profile, Vertical } from "@/lib/types";
 import InfluencerDB from "./InfluencerDB";
 import BriefPlanner from "./BriefPlanner";
@@ -15,12 +15,23 @@ interface Props {
 
 const TABS = [
   { id: "db", label: "Influencer Database", icon: Database },
-  { id: "brief", label: "New Campaign Brief", icon: FileText },
+  { id: "brief", label: "Campaign Brief", icon: FileText },
   { id: "crm", label: "Client CRM", icon: BarChart3 },
 ];
 
 export default function DistroHub({ profile, userId, verticals }: Props) {
   const [activeTab, setActiveTab] = useState("db");
+  const [editingBriefId, setEditingBriefId] = useState<string | null>(null);
+
+  function openBrief(id: string) {
+    setEditingBriefId(id);
+    setActiveTab("brief");
+  }
+
+  function handleTabChange(id: string) {
+    if (id !== "brief") setEditingBriefId(null);
+    setActiveTab(id);
+  }
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
@@ -41,7 +52,7 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setActiveTab(id)}
+              onClick={() => handleTabChange(id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 activeTab === id
                   ? "bg-blue-600 text-white shadow-sm"
@@ -50,6 +61,9 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
             >
               <Icon className="w-4 h-4" />
               {label}
+              {id === "brief" && editingBriefId && (
+                <span className="ml-1 text-xs bg-blue-400/30 px-1.5 py-0.5 rounded-full">editing</span>
+              )}
             </button>
           ))}
         </div>
@@ -58,8 +72,14 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
         {activeTab === "db" && <InfluencerDB />}
-        {activeTab === "brief" && <BriefPlanner />}
-        {activeTab === "crm" && <DistroCRM />}
+        {activeTab === "brief" && (
+          <BriefPlanner
+            key={editingBriefId || "new"}
+            initialBriefId={editingBriefId || undefined}
+            onNewBrief={() => { setEditingBriefId(null); }}
+          />
+        )}
+        {activeTab === "crm" && <DistroCRM onOpenBrief={openBrief} />}
       </div>
     </div>
   );

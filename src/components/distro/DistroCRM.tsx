@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
-import { ChevronDown, ChevronUp, Download, FileText, Wand2, Search, Plus, X, Check } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, FileText, Wand2, Search, Plus, X, Check, Pencil, ExternalLink } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type CRMEntry = {
@@ -43,7 +43,11 @@ const SALES_STATUSES = ["prospect", "active", "closed", "lost"];
 
 const EMPTY_LEAD = { brand_name: "", poc_name: "", industry: "", campaign_type: "", lead_value: "", vertical: "", notes: "", status: "prospect" };
 
-export default function DistroCRM() {
+interface DistroCRMProps {
+  onOpenBrief?: (id: string) => void;
+}
+
+export default function DistroCRM({ onOpenBrief }: DistroCRMProps = {}) {
   const [entries, setEntries] = useState<CRMEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -331,6 +335,36 @@ export default function DistroCRM() {
             {/* Expanded detail */}
             {expanded === entry.id && (
               <div className="px-5 pb-5 space-y-4 bg-slate-50/50 border-t border-slate-100">
+
+                {/* Distro: quick-action buttons */}
+                {entry.source === "distro" && onOpenBrief && (
+                  <div className="pt-4 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => onOpenBrief(entry.id)}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                      <Pencil className="w-3.5 h-3.5" />
+                      {entry.media_plan_json?.length ? "Edit Brief / Plan" : "Open & Add Media Plan"}
+                    </button>
+                    {!entry.narrative_text && (
+                      <button
+                        onClick={() => onOpenBrief(entry.id)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 text-white text-xs font-medium rounded-lg hover:bg-violet-700 transition-colors">
+                        <FileText className="w-3.5 h-3.5" /> Add Narrative
+                      </button>
+                    )}
+                    {entry.narrative_text && (
+                      <button
+                        onClick={() => onOpenBrief(entry.id)}
+                        className="flex items-center gap-1.5 px-3 py-2 border border-violet-300 text-violet-700 text-xs font-medium rounded-lg hover:bg-violet-50 transition-colors">
+                        <FileText className="w-3.5 h-3.5" /> Edit Narrative
+                      </button>
+                    )}
+                    <span className="flex items-center gap-1 text-xs text-slate-400 ml-1">
+                      <ExternalLink className="w-3 h-3" /> Opens in Brief Planner tab
+                    </span>
+                  </div>
+                )}
+
                 {entry.source === "sales" && entry.notes && (
                   <div className="pt-4">
                     <p className="text-xs font-medium text-slate-500 mb-1 uppercase">Notes</p>
@@ -338,7 +372,7 @@ export default function DistroCRM() {
                   </div>
                 )}
                 {entry.source === "distro" && entry.media_plan_json && entry.media_plan_json.length > 0 && (
-                  <div className="pt-4">
+                  <div>
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-xs font-medium text-slate-500 uppercase">Media Plan ({entry.media_plan_json.length} handles)</p>
                       <button onClick={() => exportPlan(entry)} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
@@ -378,6 +412,11 @@ export default function DistroCRM() {
                     <div className="bg-white rounded-lg border border-slate-200 p-4 text-sm text-slate-700 whitespace-pre-wrap max-h-64 overflow-y-auto leading-relaxed">
                       {entry.narrative_text}
                     </div>
+                  </div>
+                )}
+                {entry.source === "distro" && !entry.media_plan_json?.length && !entry.narrative_text && (
+                  <div className="pt-2 pb-1 text-xs text-slate-400 italic">
+                    No media plan or narrative yet. Click "Open & Add Media Plan" above to continue.
                   </div>
                 )}
               </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import {
   Wand2, FileText, Download, Check, Lock, Pencil,
@@ -121,7 +121,12 @@ function exportAsWordDoc(text: string, filename: string) {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export default function BriefPlanner() {
+interface BriefPlannerProps {
+  initialBriefId?: string;
+  onNewBrief?: () => void;
+}
+
+export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlannerProps = {}) {
   const [brief, setBrief] = useState<BriefForm>(EMPTY_BRIEF);
   const [planRows, setPlanRows] = useState<PlanRow[]>([]);
   const [narrative, setNarrative] = useState("");
@@ -137,6 +142,7 @@ export default function BriefPlanner() {
   const [showNarrative, setShowNarrative] = useState(true);
   const [error, setError] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
+  const [loadingBrief, setLoadingBrief] = useState(false);
   const [showWhatsApp, setShowWhatsApp] = useState(false);
 
   // Discovery modal state
@@ -150,6 +156,43 @@ export default function BriefPlanner() {
   const [pendingMargin, setPendingMargin] = useState("30");
 
   const supabase = createClient();
+
+  // Load existing brief when opened from CRM
+  useEffect(() => {
+    if (!initialBriefId) return;
+    setLoadingBrief(true);
+    supabase.from("client_briefs").select("*").eq("id", initialBriefId).single().then(({ data }) => {
+      if (!data) { setLoadingBrief(false); return; }
+      const d = data as Record<string, unknown>;
+      setBrief({
+        brand_name: String(d.brand_name || ""),
+        poc_name: String(d.poc_name || d.brand_poc || ""),
+        industry: String(d.industry || ""),
+        campaign_type: String(d.campaign_type || ""),
+        engagement_model: (d.engagement_type as "one_time" | "retainer") || "one_time",
+        total_budget: d.total_budget ? String(d.total_budget) : d.budget ? String(d.budget) : "",
+        target_audience: String(d.target_audience || ""),
+        target_geography: String(d.target_geography || "Pan India"),
+        content_type: (d.content_type as "creators" | "pages" | "both") || "both",
+        campaign_objective: String(d.campaign_objective || ""),
+        timeline: String(d.timeline || ""),
+        deliverables: String(d.deliverables || ""),
+        additional_notes: String(d.additional_notes || ""),
+      });
+      if (d.media_plan_json && Array.isArray(d.media_plan_json)) {
+        setPlanRows((d.media_plan_json as PlanRow[]).map(r => ({
+          ...r,
+          client_rate: r.client_rate ?? Math.round((r.rate || 0) * 1.3),
+          client_total: r.client_total ?? Math.round((r.total_cost || 0) * 1.3),
+        })));
+        setShowPlan(true);
+      }
+      if (d.narrative_text) { setNarrative(String(d.narrative_text)); setShowNarrative(true); }
+      setCrmId(String(d.id));
+      setSaveMsg(`Loaded "${d.brand_name}" — you can edit and re-save below.`);
+      setLoadingBrief(false);
+    });
+  }, [initialBriefId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function sb<K extends keyof BriefForm>(k: K, v: BriefForm[K]) { setBrief(b => ({ ...b, [k]: v })); }
 
@@ -361,12 +404,32 @@ export default function BriefPlanner() {
   const hasContent = hasPlan || hasNarrative;
   const contactsWithPhone = planRows.filter(r => r.contact_no && r.contact_no.trim());
 
+  if (loadingBrief) {
+    return (
+      <div className="flex items-center justify-center py-24 text-slate-400">
+        <Loader2 className="w-6 h-6 animate-spin mr-3 text-blue-500" />
+        <span className="text-sm">Loading brief…</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
 
       {/* ── Brief Form ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6">
-        <h2 className="font-semibold text-slate-900 mb-5">Campaign Brief</h2>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-semibold text-slate-900">
+            {initialBriefId ? `Editing: ${brief.brand_name || "Campaign Brief"}` : "Campaign Brief"}
+          </h2>
+          {initialBriefId && onNewBrief && (
+            <button
+              onClick={() => { onNewBrief(); }}
+              className="flex items-center gap-1.5 text-xs text-slate-500 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors">
+              <Plus className="w-3.5 h-3.5" /> New Brief
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-4">
 
           <div>
