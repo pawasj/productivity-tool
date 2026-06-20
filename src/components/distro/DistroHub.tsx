@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Network, Database, FileText, BarChart3 } from "lucide-react";
+import { Network, Database, FileText } from "lucide-react";
 import type { Profile, Vertical } from "@/lib/types";
 import InfluencerDB from "./InfluencerDB";
 import BriefPlanner from "./BriefPlanner";
-import DistroCRM from "./DistroCRM";
 
 interface Props {
   profile: Profile;
@@ -16,17 +15,11 @@ interface Props {
 const TABS = [
   { id: "db", label: "Influencer Database", icon: Database },
   { id: "brief", label: "Campaign Brief", icon: FileText },
-  { id: "crm", label: "Client CRM", icon: BarChart3 },
 ];
 
 export default function DistroHub({ profile, userId, verticals }: Props) {
   const [activeTab, setActiveTab] = useState("db");
   const [editingBriefId, setEditingBriefId] = useState<string | null>(null);
-
-  function openBrief(id: string) {
-    setEditingBriefId(id);
-    setActiveTab("brief");
-  }
 
   function handleTabChange(id: string) {
     if (id !== "brief") setEditingBriefId(null);
@@ -79,7 +72,6 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
             onNewBrief={() => { setEditingBriefId(null); }}
           />
         )}
-        {activeTab === "crm" && <DistroCRM onOpenBrief={openBrief} />}
       </div>
     </div>
   );

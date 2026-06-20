@@ -32,6 +32,9 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
   const [invitePassword, setInvitePassword] = useState("");
+  const [inviteDept, setInviteDept] = useState("");
+  const [inviteDesignation, setInviteDesignation] = useState("");
+  const [inviteManager, setInviteManager] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const supabase = createClient();
@@ -49,6 +52,9 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
         password: invitePassword,
         full_name: inviteName.trim(),
         role: inviteRole,
+        department: inviteDept.trim() || null,
+        designation: inviteDesignation.trim() || null,
+        reporting_manager_id: inviteManager || null,
       }),
     });
 
@@ -72,6 +78,7 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
     setSaving(false);
     setShowInvite(false);
     setInviteEmail(""); setInviteName(""); setInvitePassword(""); setInviteRole("member");
+    setInviteDept(""); setInviteDesignation(""); setInviteManager("");
   }
 
   async function toggleRole(member: Profile) {
@@ -280,6 +287,29 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                   <input type="password" value={invitePassword} onChange={(e) => setInvitePassword(e.target.value)}
                     placeholder="They can change this after login"
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Department</label>
+                    <input value={inviteDept} onChange={e => setInviteDept(e.target.value)}
+                      placeholder="e.g. Social Media"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Designation</label>
+                    <input value={inviteDesignation} onChange={e => setInviteDesignation(e.target.value)}
+                      placeholder="e.g. Social Media Manager"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Reporting Manager</label>
+                  <select value={inviteManager} onChange={e => setInviteManager(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">No reporting manager</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.full_name} {m.designation ? `(${m.designation})` : ""}</option>)}
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1">These fields will be locked and cannot be edited by the user.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>

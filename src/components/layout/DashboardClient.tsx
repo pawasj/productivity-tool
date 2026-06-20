@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import { Plus, Settings2, X, Check, Palette, LayoutDashboard } from "lucide-react";
 import TodosModule from "@/components/modules/TodosModule";
-import DiscussionsModule from "@/components/modules/DiscussionsModule";
+import TeamTasksModule from "@/components/modules/TeamTasksModule";
 import MeetingsModule from "@/components/modules/MeetingsModule";
 import NotesModule from "@/components/modules/NotesModule";
 import TeamDiscussionsModule from "@/components/modules/TeamDiscussionsModule";
@@ -220,7 +220,7 @@ export default function DashboardClient({ verticals: initialVerticals, profile, 
                   <TodosModule verticalId={current.id} userId={userId} members={members} />
                 </div>
                 <div className="col-span-12 lg:col-span-4">
-                  <DiscussionsModule verticalId={current.id} userId={userId} members={[]} />
+                  <TeamTasksModule verticalId={current.id} userId={userId} members={members} />
                 </div>
                 <div className="col-span-12 lg:col-span-4">
                   <MeetingsModule verticalId={current.id} userId={userId} members={members} />

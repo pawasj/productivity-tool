@@ -5,8 +5,9 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import {
-  LayoutDashboard, TrendingUp,
-  LogOut, ChevronRight, Shield, Network, UserCircle,
+  LayoutDashboard, Briefcase, Network, UserCircle,
+  LogOut, ChevronRight, Shield, MessageSquare,
+  MessageSquareDot, Building2,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import NotificationBell from "./NotificationBell";
@@ -16,9 +17,12 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/dashboard/pipeline", icon: TrendingUp, label: "Sales Pipeline" },
+  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", exact: true },
+  { href: "/dashboard/crm", icon: Briefcase, label: "Sales CRM" },
   { href: "/dashboard/distro", icon: Network, label: "Distribution Hub" },
+  { href: "/dashboard/discussions", icon: MessageSquareDot, label: "Discussion Board" },
+  { href: "/dashboard/chat", icon: MessageSquare, label: "Messages" },
+  { href: "/dashboard/vendors", icon: Building2, label: "Vendor Management" },
   { href: "/dashboard/profile", icon: UserCircle, label: "My Profile" },
 ];
 
@@ -31,6 +35,13 @@ export default function Sidebar({ profile }: SidebarProps) {
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
+  }
+
+  function isActive(href: string, exact?: boolean) {
+    if (exact) return pathname === href || pathname === "/dashboard";
+    // Don't match /dashboard for sub-paths unless exact
+    if (href === "/dashboard") return false;
+    return pathname.startsWith(href);
   }
 
   return (
@@ -48,10 +59,8 @@ export default function Sidebar({ profile }: SidebarProps) {
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 pt-2 pb-1">
           Workspace
         </p>
-        {navItems.map(({ href, icon: Icon, label }) => {
-          const active = href === "/dashboard"
-            ? pathname === "/dashboard" || (pathname.startsWith("/dashboard") && !pathname.startsWith("/dashboard/pipeline") && !pathname.startsWith("/dashboard/admin") && !pathname.startsWith("/dashboard/distro"))
-            : pathname.startsWith(href);
+        {navItems.map(({ href, icon: Icon, label, exact }) => {
+          const active = isActive(href, exact);
           return (
             <Link
               key={href}
@@ -97,7 +106,7 @@ export default function Sidebar({ profile }: SidebarProps) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-slate-900 truncate">{profile?.full_name || "User"}</p>
-            <p className="text-xs text-slate-400 truncate">{profile?.role}</p>
+            <p className="text-xs text-slate-400 truncate">{profile?.designation || profile?.role}</p>
           </div>
         </div>
         <button

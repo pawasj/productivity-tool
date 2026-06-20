@@ -297,11 +297,25 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
                 <Field label="Phone Number">
                   <input value={profile.phone || ""} onChange={e => setProfile({ ...profile, phone: e.target.value })} placeholder="+91 98765 43210" className={inputCls} />
                 </Field>
-                <Field label="Designation">
-                  <input value={profile.designation || ""} onChange={e => setProfile({ ...profile, designation: e.target.value })} placeholder="e.g. Senior Manager" className={inputCls} />
+                <Field label={`Designation${(profile as Profile & { locked_designation?: string }).locked_designation ? " 🔒" : ""}`}>
+                  <input
+                    value={profile.designation || ""}
+                    onChange={e => setProfile({ ...profile, designation: e.target.value })}
+                    placeholder="e.g. Senior Manager"
+                    disabled={!!(profile as Profile & { locked_designation?: string }).locked_designation}
+                    className={`${inputCls} ${(profile as Profile & { locked_designation?: string }).locked_designation ? "bg-slate-50 text-slate-400" : ""}`}
+                  />
+                  {(profile as Profile & { locked_designation?: string }).locked_designation && <p className="text-[10px] text-slate-400 mt-0.5">Set by admin — contact admin to update</p>}
                 </Field>
-                <Field label="Department">
-                  <input value={profile.department || ""} onChange={e => setProfile({ ...profile, department: e.target.value })} placeholder="e.g. Marketing" className={inputCls} />
+                <Field label={`Department${(profile as Profile & { locked_department?: string }).locked_department ? " 🔒" : ""}`}>
+                  <input
+                    value={profile.department || ""}
+                    onChange={e => setProfile({ ...profile, department: e.target.value })}
+                    placeholder="e.g. Marketing"
+                    disabled={!!(profile as Profile & { locked_department?: string }).locked_department}
+                    className={`${inputCls} ${(profile as Profile & { locked_department?: string }).locked_department ? "bg-slate-50 text-slate-400" : ""}`}
+                  />
+                  {(profile as Profile & { locked_department?: string }).locked_department && <p className="text-[10px] text-slate-400 mt-0.5">Set by admin — contact admin to update</p>}
                 </Field>
                 <Field label="Employee ID">
                   <input value={profile.employee_id || ""} disabled className={`${inputCls} bg-slate-50 text-slate-400`} />

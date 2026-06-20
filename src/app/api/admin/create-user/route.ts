@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, full_name, role } = await req.json();
+    const { email, password, full_name, role, department, designation, reporting_manager_id } = await req.json();
 
     if (!email || !password || !full_name) {
       return NextResponse.json({ error: "email, password, and full_name are required" }, { status: 400 });
@@ -35,9 +35,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Upsert profile
-    await adminClient
-      .from("profiles")
-      .upsert({ id: data.user.id, email, full_name, role: role || "member" });
+    await adminClient.from("profiles").upsert({
+      id: data.user.id, email, full_name, role: role || "member",
+      department: department || null,
+      designation: designation || null,
+      locked_designation: designation || null,
+      locked_department: department || null,
+      locked_reporting_manager_id: reporting_manager_id || null,
+      reporting_manager_id: reporting_manager_id || null,
+    });
 
     return NextResponse.json({ success: true, user: { id: data.user.id, email, full_name, role } });
   } catch (err: unknown) {

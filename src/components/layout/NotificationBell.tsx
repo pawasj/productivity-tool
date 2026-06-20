@@ -33,17 +33,27 @@ function timeAgo(iso: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+const READ_KEY = "bcc_notif_read";
+function getReadIds(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || "[]")); } catch { return new Set(); }
+}
+function persistReadIds(ids: Set<string>) {
+  try { localStorage.setItem(READ_KEY, JSON.stringify([...ids].slice(-200))); } catch {}
+}
+
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [loading, setLoading] = useState(true);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const [mounted, setMounted] = useState(false);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const btnRef = useRef<HTMLButtonElement>(null);
   const supabase = createClient();
 
   useEffect(() => {
     setMounted(true);
+    setReadIds(getReadIds());
     fetchNotifs();
     const interval = setInterval(fetchNotifs, 60000);
     return () => clearInterval(interval);
@@ -151,9 +161,12 @@ export default function NotificationBell() {
       });
     });
 
-    const all = [...liveNotifs];
+    const dismissed = getReadIds();
+    const all = [...liveNotifs].map(n => ({ ...n, read: dismissed.has(n.id) }));
     const liveIds = new Set(all.map(n => n.id));
-    (dbNotifs || []).forEach(n => { if (!liveIds.has(n.id)) all.push(n as Notif); });
+    (dbNotifs || []).forEach(n => {
+      if (!liveIds.has(n.id)) all.push({ ...n as Notif, read: n.read || dismissed.has(n.id) });
+    });
 
     setNotifs(all);
     setLoading(false);
@@ -163,10 +176,23 @@ export default function NotificationBell() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
+    const newIds = new Set([...readIds, ...notifs.map(n => n.id)]);
+    setReadIds(newIds);
+    persistReadIds(newIds);
     setNotifs(n => n.map(x => ({ ...x, read: true })));
   }
 
+  function markRead(id: string) {
+    const newIds = new Set([...readIds, id]);
+    setReadIds(newIds);
+    persistReadIds(newIds);
+    setNotifs(n => n.map(x => x.id === id ? { ...x, read: true } : x));
+  }
+
   function dismiss(id: string) {
+    const newIds = new Set([...readIds, id]);
+    setReadIds(newIds);
+    persistReadIds(newIds);
     setNotifs(n => n.filter(x => x.id !== id));
   }
 
@@ -196,7 +222,7 @@ export default function NotificationBell() {
           </div>
         )}
         {notifs.map(n => (
-          <div key={n.id} className={`flex gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${n.read ? "opacity-60" : ""}`}>
+          <div key={n.id} className={`flex gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${n.read ? "opacity-50" : ""}`}>
             <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
               {TYPE_ICON[n.type] || TYPE_ICON.info}
             </div>
@@ -205,9 +231,16 @@ export default function NotificationBell() {
               {n.body && <p className="text-xs text-slate-400 truncate">{n.body}</p>}
               <p className="text-xs text-slate-300 mt-0.5">{timeAgo(n.created_at)}</p>
             </div>
-            <button onClick={() => dismiss(n.id)} className="shrink-0 p-1 hover:bg-slate-200 rounded-lg transition-colors mt-0.5">
-              <X className="w-3 h-3 text-slate-400" />
-            </button>
+            <div className="shrink-0 flex flex-col gap-0.5 mt-0.5">
+              {!n.read && (
+                <button onClick={() => markRead(n.id)} title="Mark as read" className="p-1 hover:bg-indigo-100 rounded-lg transition-colors">
+                  <Check className="w-3 h-3 text-indigo-500" />
+                </button>
+              )}
+              <button onClick={() => dismiss(n.id)} title="Dismiss" className="p-1 hover:bg-slate-200 rounded-lg transition-colors">
+                <X className="w-3 h-3 text-slate-400" />
+              </button>
+            </div>
           </div>
         ))}
       </div>
