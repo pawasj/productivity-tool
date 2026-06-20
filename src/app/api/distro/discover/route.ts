@@ -17,67 +17,101 @@ interface DiscoveryResult {
   type: "creator" | "page";
 }
 
+const PLATFORM_RESEARCH_GUIDE: Record<string, string> = {
+  instagram: `INSTAGRAM: Search for "top Indian [category] creators Instagram 2024 2025", "[niche] meme pages India Instagram followers", "[brand industry] influencers India Instagram engagement". Look for verified handle names, bio descriptions, follower counts from recent articles, creator economy reports, and social media ranking sites like Social Blade, Hypeauditor, Influencer.in.`,
+  youtube: `YOUTUBE: Search for "top [category] YouTube channels India subscribers 2024", "[industry] YouTubers India", "[niche] Hindi/English YouTube content creators India". Use YouTube search terms, check Vidooly, Social Blade rankings, and media coverage. Include channel subscriber counts and video view averages.`,
+  linkedin: `LINKEDIN: Search for "[industry] thought leaders India LinkedIn", "top Indian [profession] LinkedIn influencer 2024", "[sector] executives India LinkedIn top voices". Focus on professionals with large follower bases, LinkedIn Top Voices badge holders, and subject matter experts. Include their professional title and company.`,
+  reddit: `REDDIT: Search for "top Indian subreddits [category]", "r/India r/[topic] popular communities", "Reddit India [niche] community size". Identify relevant subreddits (community pages), their subscriber counts, and active moderators/contributors. For "creators" on Reddit, look for prolific community contributors and moderators.`,
+  x: `X (TWITTER): Search for "top Indian [industry] Twitter accounts 2024", "[niche] Twitter influencers India followers", "[brand sector] thought leaders Twitter India". Look for high-follower accounts, frequent posters, accounts with strong engagement ratios. Include verified (blue tick) accounts where possible.`,
+  newsletter: `NEWSLETTER/SUBSTACK: Search for "top Indian newsletters Substack 2024", "[industry] newsletter India subscribers", "Indian [niche] email newsletter creator". Look for Substack India creators, newsletter roundups, Morning Context, The Ken India, and niche newsletters. Include subscriber counts and publication frequency.`,
+  website: `WEBSITE/BLOG: Search for "top Indian [industry] bloggers 2024", "[niche] website India traffic", "popular Indian [category] blog domain authority". Look for high-traffic websites, Alexa/SimilarWeb rankings, and influential content platforms in the niche.`,
+};
+
+function buildPlatformSearchPlan(platforms: string[], brief: Record<string, string>, contentType: string): string {
+  const selected = platforms.filter(p => PLATFORM_RESEARCH_GUIDE[p]);
+  if (selected.length === 0) return "Search across Instagram, YouTube, LinkedIn for Indian influencers.";
+
+  return selected.map(p => PLATFORM_RESEARCH_GUIDE[p]).join("\n\n");
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { brief } = await req.json();
+    const body = await req.json();
+    const { brief, platforms = ["instagram", "youtube", "linkedin"] } = body;
     if (!brief?.brand_name) return NextResponse.json({ error: "brand_name required" }, { status: 400 });
 
     const contentType = brief.content_type || "both";
     const geography = brief.target_geography || "India";
 
-    const searchFocus = contentType === "creators"
+    const typeLabel = contentType === "creators"
       ? "individual content creators and influencers"
       : contentType === "pages"
-      ? "community pages, meme pages, and mass-reach social media pages"
-      : "content creators, influencers, and community/meme pages";
+      ? "community pages, meme pages, newsletters, subreddits, and mass-reach accounts"
+      : "content creators, influencers, community pages, and newsletters";
 
-    const prompt = `You are a senior influencer marketing strategist at BCC Media Network, an Indian social media agency.
+    const platformList = (platforms as string[]).join(", ").toUpperCase();
+    const platformGuide = buildPlatformSearchPlan(platforms, brief, contentType);
 
-CAMPAIGN BRIEF:
+    const prompt = `You are a senior influencer marketing strategist at BCC Media Network, an Indian digital media agency. Your job is to find REAL, VERIFIED ${typeLabel} across ${platformList} for the following campaign.
+
+═══ CAMPAIGN BRIEF ═══
 Brand: ${brief.brand_name}
 Industry: ${brief.industry || "Not specified"}
 Campaign Type: ${brief.campaign_type || "Brand Awareness"}
 Objective: ${brief.campaign_objective || "Not specified"}
-Target Audience: ${brief.target_audience || "Not specified"}
+Target Audience: ${brief.target_audience || "General"}
 Geography: ${geography}
-Distribution Mix: ${contentType === "creators" ? "Creators & Influencers only" : contentType === "pages" ? "Community Pages only" : "Creators + Community Pages"}
-Budget: ₹${parseFloat(brief.total_budget || "0").toLocaleString() || "Not specified"}
+Content Mix: ${contentType === "creators" ? "Creators & Influencers ONLY" : contentType === "pages" ? "Community Pages & Mass Accounts ONLY" : "Both Creators and Community Pages"}
+Budget: ₹${parseFloat(brief.total_budget || "0").toLocaleString("en-IN") || "Not specified"}
+Deliverables: ${brief.deliverables || "Not specified"}
+Additional Notes: ${brief.additional_notes || "None"}
 
-TASK:
-Research and identify the best ${searchFocus} for this campaign. Use the web_search tool to:
-1. Search for top Indian ${contentType === "pages" ? "meme pages, community pages" : contentType === "creators" ? "influencers, content creators" : "influencers and community pages"} in the ${brief.industry || ""} space on Instagram, YouTube, LinkedIn
-2. Verify their follower counts and engagement rates from recent data
-3. Check if they are actively posting and relevant to ${geography}
-4. Find contact information where available
+═══ PLATFORMS TO SEARCH ═══
+${platformList}
 
-After researching, provide 10–15 results as a JSON array. Only include handles/pages you have actually found evidence of — do NOT fabricate data.
+═══ RESEARCH METHODOLOGY — follow this exactly ═══
+${platformGuide}
 
-Return ONLY a JSON object (no markdown fences):
+═══ SEARCH STRATEGY ═══
+For EACH selected platform, run 2–3 targeted web searches using the search queries described above. Do NOT skip any platform. After gathering results, cross-reference and verify follower counts. Prefer results from:
+- Official platform analytics tools (Social Blade, Hypeauditor, Influencer.in)
+- Recent media articles (2023–2025) about Indian social media rankings
+- Creator economy reports for India
+- Platform-specific discover/explore pages
+
+IMPORTANT RULES:
+1. Only include accounts you have VERIFIED through search results — never fabricate handles
+2. Include a mix of mega (1M+), macro (100K–1M), and micro (10K–100K) accounts for a balanced plan
+3. For each result, include the EXACT profile URL (e.g., instagram.com/handle, linkedin.com/in/name, reddit.com/r/subreddit, substack.com/author)
+4. Engagement rate matters more than raw follower count — flag accounts with notably high engagement
+5. ${contentType === "pages" ? "Focus on PAGES and COMMUNITIES, not individual people." : contentType === "creators" ? "Focus on INDIVIDUAL content creators, not brand pages." : "Include a healthy mix of creators and community pages."}
+6. Each result must be relevant to: ${brief.industry || "the brand's industry"} and targeted at ${brief.target_audience || "the target audience"}
+
+After all searches, compile 12–18 best matches and return ONLY a JSON object (no markdown fences, no extra text):
 {
   "results": [
     {
-      "handle_name": "@actual_handle",
+      "handle_name": "@exact_handle_or_page_name",
       "platform": "instagram",
-      "category": "Meme Page",
+      "category": "Meme Page / Tech Creator / Finance Newsletter / etc.",
       "followers": "2.3M",
       "engagement_rate": "4.2%",
       "location": "Mumbai, Maharashtra",
-      "contact": "",
-      "rationale": "Why this matches the brand — specific reason",
+      "contact": "email or DM if found",
+      "rationale": "Specific reason this account matches the ${brief.brand_name} campaign brief — mention audience overlap, content style, past brand collaborations if known",
       "match_score": "High",
-      "profile_url": "https://instagram.com/actual_handle",
+      "profile_url": "https://instagram.com/handle",
       "type": "page"
     }
   ]
 }
 
-match_score must be "High", "Medium", or "Low" based on how well the creator/page matches this specific brief.
-type must be "creator" for individual influencers or "page" for community/meme pages.`;
+match_score: "High" = strong audience & content alignment; "Medium" = good fit with minor gaps; "Low" = reach justifies inclusion despite lower alignment.
+type: "creator" for individual people, "page" for communities/channels/newsletters/subreddits.`;
 
-    // Use web_search tool to get real data
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 8000,
+      max_tokens: 10000,
       tools: [
         {
           type: "web_search_20250305" as const,
@@ -87,19 +121,14 @@ type must be "creator" for individual influencers or "page" for community/meme p
       messages: [{ role: "user", content: prompt }],
     });
 
-    // Extract the final text response (after tool use)
     let finalText = "";
     for (const block of message.content) {
-      if (block.type === "text") {
-        finalText += block.text;
-      }
+      if (block.type === "text") finalText += block.text;
     }
 
-    // Parse JSON from response
     const jsonMatch = finalText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      // Fallback: no web search available, use AI knowledge
-      return await fallbackDiscovery(brief, contentType, geography);
+      return await fallbackDiscovery(brief, contentType, geography, platforms);
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
@@ -110,42 +139,46 @@ type must be "creator" for individual influencers or "page" for community/meme p
     return NextResponse.json({ results, source: "web_search" });
   } catch (err: unknown) {
     console.error("discover error:", err);
-    // If web search not available or fails, fall back to AI knowledge
     try {
-      const { brief } = await req.json().catch(() => ({}));
-      return await fallbackDiscovery(brief || {}, "both", "India");
+      const body2 = await req.clone().json().catch(() => ({})) as { brief?: Record<string, string>; platforms?: string[] };
+      return await fallbackDiscovery(body2.brief || {}, "both", "India", body2.platforms || ["instagram", "youtube", "linkedin"]);
     } catch {
       return NextResponse.json({ error: String(err) }, { status: 500 });
     }
   }
 }
 
-async function fallbackDiscovery(brief: Record<string, string>, contentType: string, geography: string) {
-  const prompt = `You are a senior influencer marketing strategist with deep knowledge of the Indian social media landscape.
+async function fallbackDiscovery(brief: Record<string, string>, contentType: string, geography: string, platforms: string[]) {
+  const platformList = platforms.join(", ").toUpperCase();
+  const prompt = `You are a senior influencer marketing strategist with deep knowledge of the Indian social media landscape across ${platformList}.
 
 CAMPAIGN BRIEF:
 Brand: ${brief.brand_name || "Unknown Brand"}
 Industry: ${brief.industry || "Not specified"}
-Target: ${brief.target_audience || "Not specified"}
+Target Audience: ${brief.target_audience || "Not specified"}
 Geography: ${geography}
-Type: ${contentType}
+Content Type: ${contentType}
+Platforms: ${platformList}
 
-Based on your knowledge of real Indian social media accounts (as of your training data), suggest 12–15 ${contentType === "pages" ? "community pages and meme pages" : contentType === "creators" ? "content creators and influencers" : "creators and community pages"} suitable for this campaign.
+Based on your knowledge of real accounts on ${platformList}, suggest 12–15 ${contentType === "pages" ? "community pages, subreddits, newsletters" : contentType === "creators" ? "content creators and influencers" : "creators and community pages"} suitable for this campaign.
 
-Only include real, well-known accounts that actually exist. State clearly in the rationale if follower data is approximate.
+Include accounts from EACH of the following platforms: ${platformList}
+For Reddit: include r/subreddit names. For Substack/Newsletter: include newsletter names.
+
+Only include real, well-known accounts. State clearly in the rationale if follower data is approximate.
 
 Return ONLY valid JSON (no markdown):
 {
   "results": [
     {
-      "handle_name": "@handle",
+      "handle_name": "@handle_or_community_name",
       "platform": "instagram",
       "category": "Meme Page",
       "followers": "~2.5M (approx)",
       "engagement_rate": "~3–5%",
       "location": "India",
       "contact": "",
-      "rationale": "Reason this matches the brief",
+      "rationale": "Why this matches the brief",
       "match_score": "High",
       "profile_url": "https://instagram.com/handle",
       "type": "page"
@@ -155,7 +188,7 @@ Return ONLY valid JSON (no markdown):
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    max_tokens: 6000,
     messages: [{ role: "user", content: prompt }],
   });
 
@@ -164,5 +197,9 @@ Return ONLY valid JSON (no markdown):
   if (!jsonMatch) return NextResponse.json({ results: [], source: "fallback" });
 
   const parsed = JSON.parse(jsonMatch[0]);
-  return NextResponse.json({ results: parsed.results || [], source: "ai_knowledge", disclaimer: "Results based on AI training data — verify before use." });
+  return NextResponse.json({
+    results: parsed.results || [],
+    source: "ai_knowledge",
+    disclaimer: "Results based on AI training data — verify before use.",
+  });
 }

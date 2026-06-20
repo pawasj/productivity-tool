@@ -6,6 +6,7 @@ import {
   Wand2, FileText, Download, Check, Lock, Pencil,
   ChevronDown, ChevronUp, Loader2, Plus, Trash2,
   Search, MessageCircle, X, DatabaseZap, LayoutList,
+  ExternalLink, Percent,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -34,8 +35,10 @@ interface PlanRow {
   followers: string;
   deliverable_type: string;
   quantity: number;
-  rate: number;
-  total_cost: number;
+  rate: number;        // cost to agency (from DB)
+  total_cost: number;  // qty × rate (agency cost)
+  client_rate: number; // rate with margin added
+  client_total: number;// qty × client_rate (to quote to client)
   contact_no?: string;
 }
 
@@ -66,6 +69,16 @@ const EMPTY_BRIEF: BriefForm = {
 const CAMPAIGN_TYPES = ["Brand Awareness", "Product Launch", "Lead Generation", "Engagement", "Sales", "Event Promotion", "Other"];
 const INDUSTRIES = ["FMCG", "Tech", "Finance", "Fashion", "Health & Wellness", "Food & Beverage", "Entertainment", "Automobile", "Real Estate", "Other"];
 
+const ALL_PLATFORMS = [
+  { id: "instagram", label: "Instagram" },
+  { id: "youtube", label: "YouTube" },
+  { id: "linkedin", label: "LinkedIn" },
+  { id: "reddit", label: "Reddit" },
+  { id: "x", label: "X (Twitter)" },
+  { id: "newsletter", label: "Newsletter / Substack" },
+  { id: "website", label: "Website / Blog" },
+];
+
 const SCORE_COLOR: Record<string, string> = {
   High: "bg-emerald-100 text-emerald-700",
   Medium: "bg-amber-100 text-amber-700",
@@ -75,7 +88,6 @@ const SCORE_COLOR: Record<string, string> = {
 // ─── Word Doc Export ──────────────────────────────────────────────────────────
 
 function exportAsWordDoc(text: string, filename: string) {
-  // Convert markdown-ish to HTML that Word understands
   const html = text
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/^# (.*)/gm, "<h1 style='font-size:22pt;color:#1e293b'>$1</h1>")
@@ -91,27 +103,20 @@ function exportAsWordDoc(text: string, filename: string) {
   const doc = `<html xmlns:o='urn:schemas-microsoft-com:office:office'
     xmlns:w='urn:schemas-microsoft-com:office:word'
     xmlns='http://www.w3.org/TR/REC-html40'>
-  <head>
-    <meta charset='utf-8'>
+  <head><meta charset='utf-8'>
     <style>
       body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #1e293b; line-height: 1.6; margin: 72pt; }
       h1 { font-size: 22pt; color: #1e293b; margin-top: 24pt; }
       h2 { font-size: 16pt; color: #1e293b; border-bottom: 1pt solid #e2e8f0; padding-bottom: 4pt; margin-top: 18pt; }
       h3 { font-size: 13pt; color: #334155; margin-top: 12pt; }
-      p { margin: 8pt 0; }
-      ul { margin: 6pt 0 6pt 18pt; }
-      li { margin: 3pt 0; }
-      strong { font-weight: 700; }
+      p { margin: 8pt 0; } ul { margin: 6pt 0 6pt 18pt; } li { margin: 3pt 0; }
     </style>
   </head>
-  <body><p>${html}</p></body>
-  </html>`;
+  <body><p>${html}</p></body></html>`;
 
   const blob = new Blob(["﻿", doc], { type: "application/msword" });
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
@@ -133,10 +138,29 @@ export default function BriefPlanner() {
   const [error, setError] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [showWhatsApp, setShowWhatsApp] = useState(false);
+
+  // Discovery modal state
+  const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
+  const [discoveryPlatforms, setDiscoveryPlatforms] = useState<string[]>(["instagram", "youtube", "linkedin"]);
+  const [discoveryContentType, setDiscoveryContentType] = useState<"creators" | "pages" | "both">("both");
+
+  // Margin modal state
+  const [showMarginModal, setShowMarginModal] = useState(false);
+  const [agencyMargin, setAgencyMargin] = useState<number>(30);
+  const [pendingMargin, setPendingMargin] = useState("30");
+
   const supabase = createClient();
 
   function sb<K extends keyof BriefForm>(k: K, v: BriefForm[K]) { setBrief(b => ({ ...b, [k]: v })); }
-  function totalBudget() { return planRows.reduce((s, r) => s + (r.total_cost || 0), 0); }
+
+  function totalAgencyCost() { return planRows.reduce((s, r) => s + (r.total_cost || 0), 0); }
+  function totalClientQuote() { return planRows.reduce((s, r) => s + (r.client_total || 0), 0); }
+
+  function togglePlatform(p: string) {
+    setDiscoveryPlatforms(prev =>
+      prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+    );
+  }
 
   // ── Save to CRM ────────────────────────────────────────────────────────────
   async function saveToCRM(planJson: PlanRow[], narText: string, existingId?: string): Promise<string | null> {
@@ -176,10 +200,10 @@ export default function BriefPlanner() {
     return (data as Record<string, string> | null)?.id || null;
   }
 
-  // ── Generate Plan ─────────────────────────────────────────────────────────
-  async function generatePlan() {
+  // ── Generate Plan (with margin) ───────────────────────────────────────────
+  async function generatePlan(margin: number) {
     if (!brief.brand_name.trim()) { setError("Please enter a brand name."); return; }
-    setError(""); setGeneratingPlan(true);
+    setError(""); setGeneratingPlan(true); setShowMarginModal(false);
     try {
       const { data: infs } = await supabase.from("influencers").select("*")
         .eq("is_active", true)
@@ -188,15 +212,23 @@ export default function BriefPlanner() {
       const res = await fetch("/api/distro/generate-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief, influencers: infs || [] }),
+        body: JSON.stringify({ brief, influencers: infs || [], agency_margin: margin }),
       });
       const json = await res.json();
       if (!res.ok || json.error) { setError(json.error || "Plan generation failed."); return; }
-      if (json.empty_db) { setError(json.message || "No matching entries in your Distro Hub database. Import creators/pages first, or use Discovery to find new ones."); return; }
-      const plan: PlanRow[] = json.plan || [];
+      if (json.empty_db) { setError(json.message || "No matching entries in your Distro Hub database. Import creators/pages first, or use Discovery."); return; }
+
+      // Apply client margin to each row
+      const plan: PlanRow[] = (json.plan || []).map((r: Omit<PlanRow, "client_rate" | "client_total">) => {
+        const agencyCost = r.total_cost || (r.rate * r.quantity);
+        const clientTotal = Math.round(agencyCost * (1 + margin / 100));
+        const clientRate = r.quantity > 0 ? Math.round(clientTotal / r.quantity) : Math.round(r.rate * (1 + margin / 100));
+        return { ...r, total_cost: agencyCost, client_rate: clientRate, client_total: clientTotal };
+      });
+
       setPlanRows(plan); setShowPlan(true);
       const id = await saveToCRM(plan, narrative, crmId || undefined);
-      setCrmId(id); setSaveMsg("✓ Auto-saved to Client CRM");
+      setCrmId(id); setSaveMsg(`✓ Auto-saved to Client CRM · ${margin}% margin applied`);
     } catch { setError("Unexpected error. Check your connection."); }
     finally { setGeneratingPlan(false); }
   }
@@ -224,12 +256,16 @@ export default function BriefPlanner() {
   // ── Discovery ─────────────────────────────────────────────────────────────
   async function runDiscovery() {
     if (!brief.brand_name.trim()) { setError("Please enter a brand name before discovering."); return; }
-    setError(""); setDiscovering(true); setShowDiscovery(true);
+    if (discoveryPlatforms.length === 0) { setError("Select at least one platform."); return; }
+    setError(""); setDiscovering(true); setShowDiscovery(true); setShowDiscoveryModal(false);
     try {
       const res = await fetch("/api/distro/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief }),
+        body: JSON.stringify({
+          brief: { ...brief, content_type: discoveryContentType },
+          platforms: discoveryPlatforms,
+        }),
       });
       const json = await res.json();
       if (!res.ok || json.error) { setError(json.error || "Discovery failed."); return; }
@@ -253,11 +289,12 @@ export default function BriefPlanner() {
     const { data: ex } = await supabase.from("influencers").select("id").eq("handle_name", record.handle_name).eq("platform", record.platform).single();
     if (ex) { await supabase.from("influencers").update(record).eq("id", ex.id); }
     else { await supabase.from("influencers").insert(record); }
-    setDiscoveryResults(r => r.map(x => x.handle_name === result.handle_name ? { ...x, addedToDB: true } : x) as DiscoveryResult[]);
+    setDiscoveryResults(r => r.map(x => x.handle_name === result.handle_name ? { ...x, _addedToDB: true } : x) as DiscoveryResult[]);
   }
 
   // ── Add discovery result to plan ──────────────────────────────────────────
   function addToPlan(result: DiscoveryResult) {
+    const margin = agencyMargin || 30;
     const row: PlanRow = {
       handle_name: result.handle_name,
       platform: result.platform,
@@ -267,6 +304,8 @@ export default function BriefPlanner() {
       quantity: 1,
       rate: 0,
       total_cost: 0,
+      client_rate: 0,
+      client_total: 0,
       contact_no: result.contact,
     };
     setPlanRows(r => [...r, row]);
@@ -288,12 +327,18 @@ export default function BriefPlanner() {
       if (idx !== i) return r;
       const u = { ...r, [field]: val };
       if (field === "quantity" || field === "rate") {
-        u.total_cost = Number(field === "quantity" ? val : u.quantity) * Number(field === "rate" ? val : u.rate);
+        const qty = Number(field === "quantity" ? val : u.quantity);
+        const rate = Number(field === "rate" ? val : u.rate);
+        u.total_cost = qty * rate;
+        u.client_rate = Math.round(rate * (1 + agencyMargin / 100));
+        u.client_total = qty * u.client_rate;
       }
       return u;
     }));
   }
-  function addRow() { setPlanRows(r => [...r, { handle_name: "", platform: "instagram", category: "", followers: "", deliverable_type: "Reel", quantity: 1, rate: 0, total_cost: 0 }]); }
+  function addRow() {
+    setPlanRows(r => [...r, { handle_name: "", platform: "instagram", category: "", followers: "", deliverable_type: "Reel", quantity: 1, rate: 0, total_cost: 0, client_rate: 0, client_total: 0 }]);
+  }
   function removeRow(i: number) { setPlanRows(r => r.filter((_, idx) => idx !== i)); }
 
   // ── Excel Export ──────────────────────────────────────────────────────────
@@ -301,10 +346,11 @@ export default function BriefPlanner() {
     const ws = XLSX.utils.json_to_sheet(planRows.map(r => ({
       "Handle / Page": r.handle_name, Platform: r.platform, Category: r.category,
       Followers: r.followers, Deliverable: r.deliverable_type, Qty: r.quantity,
-      "Rate (₹)": r.rate, "Total (₹)": r.total_cost,
+      "Agency Rate (₹)": r.rate, "Agency Total (₹)": r.total_cost,
+      [`Client Rate (₹) — ${agencyMargin}% margin`]: r.client_rate,
+      [`Client Total (₹) — ${agencyMargin}% margin`]: r.client_total,
     })));
-    // Column widths
-    ws["!cols"] = [{ wch: 25 }, { wch: 12 }, { wch: 20 }, { wch: 10 }, { wch: 14 }, { wch: 6 }, { wch: 12 }, { wch: 12 }];
+    ws["!cols"] = [{ wch: 25 }, { wch: 12 }, { wch: 20 }, { wch: 10 }, { wch: 14 }, { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 18 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Media Plan");
     XLSX.writeFile(wb, `${brief.brand_name || "MediaPlan"}_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -313,8 +359,6 @@ export default function BriefPlanner() {
   const hasPlan = planRows.length > 0;
   const hasNarrative = narrative.trim().length > 0;
   const hasContent = hasPlan || hasNarrative;
-
-  // Contacts with phone numbers for WhatsApp
   const contactsWithPhone = planRows.filter(r => r.contact_no && r.contact_no.trim());
 
   return (
@@ -325,7 +369,6 @@ export default function BriefPlanner() {
         <h2 className="font-semibold text-slate-900 mb-5">Campaign Brief</h2>
         <div className="grid grid-cols-2 gap-4">
 
-          {/* Brand + POC */}
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">Brand Name *</label>
             <input value={brief.brand_name} onChange={e => sb("brand_name", e.target.value)} disabled={approved}
@@ -339,7 +382,6 @@ export default function BriefPlanner() {
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
           </div>
 
-          {/* Industry + Campaign Type */}
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">Industry</label>
             <select value={brief.industry} onChange={e => sb("industry", e.target.value)} disabled={approved}
@@ -357,7 +399,6 @@ export default function BriefPlanner() {
             </select>
           </div>
 
-          {/* Engagement Model */}
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1.5">Engagement Model</label>
             <div className="flex gap-2">
@@ -370,7 +411,6 @@ export default function BriefPlanner() {
             </div>
           </div>
 
-          {/* Budget */}
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">Total Budget (₹)</label>
             <input type="number" value={brief.total_budget} onChange={e => sb("total_budget", e.target.value)} disabled={approved}
@@ -378,7 +418,6 @@ export default function BriefPlanner() {
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
           </div>
 
-          {/* Target Audience + Geography */}
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">Target Audience</label>
             <input value={brief.target_audience} onChange={e => sb("target_audience", e.target.value)} disabled={approved}
@@ -392,7 +431,6 @@ export default function BriefPlanner() {
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
           </div>
 
-          {/* Content Type checkboxes */}
           <div className="col-span-2">
             <label className="block text-xs font-medium text-slate-700 mb-2">Distribution Mix</label>
             <div className="flex gap-3">
@@ -415,7 +453,6 @@ export default function BriefPlanner() {
             </div>
           </div>
 
-          {/* Timeline + Deliverables */}
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">Timeline</label>
             <input value={brief.timeline} onChange={e => sb("timeline", e.target.value)} disabled={approved}
@@ -429,7 +466,6 @@ export default function BriefPlanner() {
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
           </div>
 
-          {/* Objective + Notes */}
           <div className="col-span-2">
             <label className="block text-xs font-medium text-slate-700 mb-1">Campaign Objective</label>
             <textarea value={brief.campaign_objective} onChange={e => sb("campaign_objective", e.target.value)} disabled={approved}
@@ -449,7 +485,9 @@ export default function BriefPlanner() {
 
         {!approved && (
           <div className="mt-5 flex flex-wrap items-center gap-3">
-            <button onClick={generatePlan} disabled={generatingPlan || !brief.brand_name.trim()}
+            <button
+              onClick={() => { if (!brief.brand_name.trim()) { setError("Please enter a brand name."); return; } setError(""); setPendingMargin(String(agencyMargin)); setShowMarginModal(true); }}
+              disabled={generatingPlan}
               className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors">
               {generatingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
               {generatingPlan ? "Generating Plan…" : "Generate Media Plan"}
@@ -459,7 +497,9 @@ export default function BriefPlanner() {
               {generatingNarrative ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
               {generatingNarrative ? "Writing Narrative…" : "Generate Narrative"}
             </button>
-            <button onClick={runDiscovery} disabled={discovering || !brief.brand_name.trim()}
+            <button
+              onClick={() => { if (!brief.brand_name.trim()) { setError("Please enter a brand name before discovering."); return; } setError(""); setShowDiscoveryModal(true); }}
+              disabled={discovering}
               className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 text-white rounded-xl font-medium text-sm hover:bg-amber-600 disabled:opacity-50 transition-colors">
               {discovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               {discovering ? "Discovering…" : "Discovery"}
@@ -491,10 +531,21 @@ export default function BriefPlanner() {
                   {discoveryResults.length} found
                 </span>
               )}
+              {!discovering && discoveryPlatforms.length > 0 && (
+                <span className="text-xs text-slate-500 ml-2">
+                  {discoveryPlatforms.join(", ")} · {discoveryContentType === "both" ? "creators + pages" : discoveryContentType}
+                </span>
+              )}
             </div>
-            <button onClick={() => setShowDiscovery(false)} className="p-1 hover:bg-amber-100 rounded-lg">
-              <X className="w-4 h-4 text-slate-500" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setShowDiscoveryModal(true)}
+                className="text-xs text-amber-700 border border-amber-300 px-2.5 py-1 rounded-lg hover:bg-amber-100 transition-colors">
+                New Search
+              </button>
+              <button onClick={() => setShowDiscovery(false)} className="p-1 hover:bg-amber-100 rounded-lg">
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
           </div>
 
           {discovering && (
@@ -502,13 +553,17 @@ export default function BriefPlanner() {
               <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
               <div>
                 <p className="text-sm font-medium text-slate-700">AI is researching the internet…</p>
-                <p className="text-xs text-slate-400 mt-0.5">Searching for {brief.content_type === "pages" ? "community pages" : brief.content_type === "creators" ? "creators & influencers" : "creators and community pages"} matching your brief</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Searching {discoveryPlatforms.join(", ")} for {discoveryContentType === "both" ? "creators and pages" : discoveryContentType} matching your brief
+                </p>
               </div>
             </div>
           )}
 
           {!discovering && discoveryResults.length === 0 && (
-            <div className="px-6 py-10 text-center text-sm text-slate-400">No results found. Try adding more brief details and run Discovery again.</div>
+            <div className="px-6 py-10 text-center text-sm text-slate-400">
+              No results found. Try adjusting your platforms or brief details.
+            </div>
           )}
 
           {!discovering && discoveryResults.length > 0 && (
@@ -527,45 +582,50 @@ export default function BriefPlanner() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {discoveryResults.map((r, i) => (
-                    <tr key={i} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">
-                        {r.profile_url ? (
-                          <a href={r.profile_url} target="_blank" rel="noopener noreferrer"
-                            className="font-medium text-blue-600 hover:underline">{r.handle_name}</a>
-                        ) : (
+                  {discoveryResults.map((r, i) => {
+                    const added = (r as DiscoveryResult & { _addedToDB?: boolean })._addedToDB;
+                    return (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="px-4 py-3">
                           <span className="font-medium text-slate-800">{r.handle_name}</span>
-                        )}
-                        {r.location && <p className="text-xs text-slate-400 mt-0.5">{r.location}</p>}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 capitalize">{r.platform}</td>
-                      <td className="px-4 py-3"><span className="bg-slate-100 text-slate-700 text-xs px-2 py-0.5 rounded-full">{r.category}</span></td>
-                      <td className="px-4 py-3 text-slate-600">{r.followers}</td>
-                      <td className="px-4 py-3 text-slate-600">{r.engagement_rate || "—"}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${SCORE_COLOR[r.match_score] || SCORE_COLOR.Low}`}>
-                          {r.match_score}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-500 max-w-xs">{r.rationale}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1 justify-end">
-                          <button onClick={() => addToDatabase(r)}
-                            className="flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg hover:bg-indigo-100 transition-colors whitespace-nowrap">
-                            <DatabaseZap className="w-3 h-3" /> Add to DB
-                          </button>
-                          <button onClick={() => addToPlan(r)}
-                            className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg hover:bg-emerald-100 transition-colors whitespace-nowrap">
-                            <LayoutList className="w-3 h-3" /> Add to Plan
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          {r.location && <p className="text-xs text-slate-400 mt-0.5">{r.location}</p>}
+                          {r.contact && <p className="text-xs text-slate-400">{r.contact}</p>}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 capitalize">{r.platform}</td>
+                        <td className="px-4 py-3"><span className="bg-slate-100 text-slate-700 text-xs px-2 py-0.5 rounded-full">{r.category}</span></td>
+                        <td className="px-4 py-3 text-slate-600">{r.followers}</td>
+                        <td className="px-4 py-3 text-slate-600">{r.engagement_rate || "—"}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${SCORE_COLOR[r.match_score] || SCORE_COLOR.Low}`}>
+                            {r.match_score}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500 max-w-xs">{r.rationale}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1 items-end">
+                            {r.profile_url && (
+                              <a href={r.profile_url} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap">
+                                <ExternalLink className="w-3 h-3" /> Visit Profile
+                              </a>
+                            )}
+                            <button onClick={() => addToDatabase(r)}
+                              className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors whitespace-nowrap ${added ? "text-emerald-700 bg-emerald-50" : "text-indigo-600 bg-indigo-50 hover:bg-indigo-100"}`}>
+                              <DatabaseZap className="w-3 h-3" /> {added ? "Added ✓" : "Add to DB"}
+                            </button>
+                            <button onClick={() => addToPlan(r)}
+                              className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg hover:bg-emerald-100 transition-colors whitespace-nowrap">
+                              <LayoutList className="w-3 h-3" /> Add to Plan
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-100">
-                <p className="text-xs text-amber-700">⚠ Discovery results are AI-generated based on internet research. Verify follower counts and contact details before use. Rates shown are estimates.</p>
+                <p className="text-xs text-amber-700">⚠ Discovery results are AI-generated based on internet research. Verify follower counts and contact details before use.</p>
               </div>
             </div>
           )}
@@ -580,14 +640,19 @@ export default function BriefPlanner() {
               {showPlan ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               Media Plan
               <span className="text-xs font-normal text-slate-500 ml-1">
-                {planRows.length} handles · ₹{totalBudget().toLocaleString("en-IN")} total
+                {planRows.length} handles · Agency: ₹{totalAgencyCost().toLocaleString("en-IN")} · Client: ₹{totalClientQuote().toLocaleString("en-IN")}
               </span>
             </button>
             <div className="flex items-center gap-2">
               {!approved && (
-                <button onClick={addRow} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-50">
-                  <Plus className="w-3.5 h-3.5" /> Add row
-                </button>
+                <>
+                  <span className="flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+                    <Percent className="w-3 h-3" /> {agencyMargin}% margin
+                  </span>
+                  <button onClick={addRow} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-50">
+                    <Plus className="w-3.5 h-3.5" /> Add row
+                  </button>
+                </>
               )}
               <button onClick={exportExcel}
                 className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50">
@@ -605,9 +670,9 @@ export default function BriefPlanner() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100">
-                    {["Handle / Page", "Platform", "Category", "Followers", "Deliverable", "Qty", "Rate ₹", "Total ₹"].map(h => (
-                      <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">{h}</th>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    {["Handle / Page", "Platform", "Category", "Followers", "Deliverable", "Qty", "Agency Rate ₹", "Agency Total ₹", `Client Rate ₹ (+${agencyMargin}%)`, `Client Total ₹ (+${agencyMargin}%)`].map(h => (
+                      <th key={h} className={`text-left px-3 py-2.5 text-xs font-semibold uppercase ${h.includes("Client") ? "text-blue-600 bg-blue-50" : "text-slate-500"}`}>{h}</th>
                     ))}
                     {!approved && <th className="w-8" />}
                   </tr>
@@ -617,26 +682,30 @@ export default function BriefPlanner() {
                     <tr key={i} className="hover:bg-slate-50 group">
                       {approved ? (
                         <>
-                          <td className="px-4 py-2 font-medium text-slate-800">{row.handle_name}</td>
-                          <td className="px-4 py-2 text-slate-600">{row.platform}</td>
-                          <td className="px-4 py-2 text-slate-600">{row.category}</td>
-                          <td className="px-4 py-2 text-slate-600">{row.followers}</td>
-                          <td className="px-4 py-2 text-slate-600">{row.deliverable_type}</td>
-                          <td className="px-4 py-2 text-slate-600">{row.quantity}</td>
-                          <td className="px-4 py-2 text-slate-600">₹{Number(row.rate).toLocaleString("en-IN")}</td>
-                          <td className="px-4 py-2 font-medium text-slate-800">₹{Number(row.total_cost).toLocaleString("en-IN")}</td>
+                          <td className="px-3 py-2 font-medium text-slate-800">{row.handle_name}</td>
+                          <td className="px-3 py-2 text-slate-600">{row.platform}</td>
+                          <td className="px-3 py-2 text-slate-600">{row.category}</td>
+                          <td className="px-3 py-2 text-slate-600">{row.followers}</td>
+                          <td className="px-3 py-2 text-slate-600">{row.deliverable_type}</td>
+                          <td className="px-3 py-2 text-slate-600">{row.quantity}</td>
+                          <td className="px-3 py-2 text-slate-500">₹{Number(row.rate).toLocaleString("en-IN")}</td>
+                          <td className="px-3 py-2 text-slate-600">₹{Number(row.total_cost).toLocaleString("en-IN")}</td>
+                          <td className="px-3 py-2 text-blue-600 font-medium">₹{Number(row.client_rate).toLocaleString("en-IN")}</td>
+                          <td className="px-3 py-2 text-blue-700 font-bold">₹{Number(row.client_total).toLocaleString("en-IN")}</td>
                         </>
                       ) : (
                         <>
-                          <td className="px-4 py-2"><input value={row.handle_name} onChange={e => updateRow(i, "handle_name", e.target.value)} className="w-full bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-800" /></td>
-                          <td className="px-4 py-2"><input value={row.platform} onChange={e => updateRow(i, "platform", e.target.value)} className="w-24 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
-                          <td className="px-4 py-2"><input value={row.category} onChange={e => updateRow(i, "category", e.target.value)} className="w-28 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
-                          <td className="px-4 py-2"><input value={row.followers} onChange={e => updateRow(i, "followers", e.target.value)} className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
-                          <td className="px-4 py-2"><input value={row.deliverable_type} onChange={e => updateRow(i, "deliverable_type", e.target.value)} className="w-24 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
-                          <td className="px-4 py-2"><input type="number" value={row.quantity} onChange={e => updateRow(i, "quantity", Number(e.target.value))} className="w-14 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
-                          <td className="px-4 py-2"><input type="number" value={row.rate} onChange={e => updateRow(i, "rate", Number(e.target.value))} className="w-24 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
-                          <td className="px-4 py-2 font-medium text-slate-800">₹{Number(row.total_cost).toLocaleString("en-IN")}</td>
-                          <td className="px-4 py-2"><button onClick={() => removeRow(i)} className="opacity-0 group-hover:opacity-100 text-rose-400 hover:text-rose-600 p-1 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button></td>
+                          <td className="px-3 py-2"><input value={row.handle_name} onChange={e => updateRow(i, "handle_name", e.target.value)} className="w-full bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-800" /></td>
+                          <td className="px-3 py-2"><input value={row.platform} onChange={e => updateRow(i, "platform", e.target.value)} className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
+                          <td className="px-3 py-2"><input value={row.category} onChange={e => updateRow(i, "category", e.target.value)} className="w-24 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
+                          <td className="px-3 py-2"><input value={row.followers} onChange={e => updateRow(i, "followers", e.target.value)} className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
+                          <td className="px-3 py-2"><input value={row.deliverable_type} onChange={e => updateRow(i, "deliverable_type", e.target.value)} className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
+                          <td className="px-3 py-2"><input type="number" value={row.quantity} onChange={e => updateRow(i, "quantity", Number(e.target.value))} className="w-12 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
+                          <td className="px-3 py-2"><input type="number" value={row.rate} onChange={e => updateRow(i, "rate", Number(e.target.value))} className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
+                          <td className="px-3 py-2 text-slate-600">₹{Number(row.total_cost).toLocaleString("en-IN")}</td>
+                          <td className="px-3 py-2 text-blue-600 font-medium">₹{Number(row.client_rate).toLocaleString("en-IN")}</td>
+                          <td className="px-3 py-2 text-blue-700 font-bold">₹{Number(row.client_total).toLocaleString("en-IN")}</td>
+                          <td className="px-3 py-2"><button onClick={() => removeRow(i)} className="opacity-0 group-hover:opacity-100 text-rose-400 hover:text-rose-600 p-1 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button></td>
                         </>
                       )}
                     </tr>
@@ -644,8 +713,10 @@ export default function BriefPlanner() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50">
-                    <td colSpan={7} className="px-4 py-2.5 text-right text-sm font-semibold text-slate-700">Total</td>
-                    <td className="px-4 py-2.5 font-bold text-slate-900">₹{totalBudget().toLocaleString("en-IN")}</td>
+                    <td colSpan={7} className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">Agency Total</td>
+                    <td className="px-3 py-2.5 font-bold text-slate-700">₹{totalAgencyCost().toLocaleString("en-IN")}</td>
+                    <td className="px-3 py-2.5 text-xs font-semibold text-blue-600 text-right">Client Quote</td>
+                    <td className="px-3 py-2.5 font-bold text-blue-700">₹{totalClientQuote().toLocaleString("en-IN")}</td>
                     {!approved && <td />}
                   </tr>
                 </tfoot>
@@ -689,7 +760,116 @@ export default function BriefPlanner() {
         </div>
       )}
 
-      {/* ── WhatsApp Initiate Conversation Modal ─────────────────────────── */}
+      {/* ── Discovery Options Modal ──────────────────────────────────────── */}
+      {showDiscoveryModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Search className="w-4 h-4 text-amber-500" />
+                <h3 className="font-semibold text-slate-900">Discovery Settings</h3>
+              </div>
+              <button onClick={() => setShowDiscoveryModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
+            </div>
+            <div className="p-5 space-y-5">
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Platforms to Search</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {ALL_PLATFORMS.map(p => (
+                    <label key={p.id} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all ${discoveryPlatforms.includes(p.id) ? "border-amber-400 bg-amber-50" : "border-slate-200 hover:border-slate-300"}`}>
+                      <input type="checkbox" checked={discoveryPlatforms.includes(p.id)} onChange={() => togglePlatform(p.id)} className="accent-amber-500 w-4 h-4" />
+                      <span className="text-sm font-medium text-slate-700">{p.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Content Type</p>
+                <div className="flex gap-2">
+                  {([
+                    { v: "creators", l: "Creators / Influencers" },
+                    { v: "pages", l: "Community Pages" },
+                    { v: "both", l: "Both" },
+                  ] as const).map(({ v, l }) => (
+                    <button key={v} onClick={() => setDiscoveryContentType(v)}
+                      className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${discoveryContentType === v ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {discoveryPlatforms.length === 0 && (
+                <p className="text-xs text-rose-600 bg-rose-50 px-3 py-2 rounded-lg">Select at least one platform to search.</p>
+              )}
+            </div>
+            <div className="flex gap-3 p-5 border-t border-slate-100">
+              <button onClick={() => setShowDiscoveryModal(false)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={runDiscovery} disabled={discoveryPlatforms.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors">
+                <Search className="w-4 h-4" /> Start Discovery
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Margin Modal ─────────────────────────────────────────────────── */}
+      {showMarginModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Percent className="w-4 h-4 text-blue-500" />
+                <h3 className="font-semibold text-slate-900">Agency Margin</h3>
+              </div>
+              <button onClick={() => setShowMarginModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-slate-600">
+                Set your agency margin. The media plan will show both the <strong>agency cost</strong> (from DB rates) and the <strong>client quote</strong> (cost + margin).
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-2">Agency Margin %</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number" min={0} max={100} value={pendingMargin}
+                    onChange={e => setPendingMargin(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { const m = Math.min(100, Math.max(0, Number(pendingMargin) || 0)); setAgencyMargin(m); generatePlan(m); } }}
+                    className="flex-1 px-4 py-3 text-2xl font-bold text-center border-2 border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoFocus
+                  />
+                  <span className="text-2xl font-bold text-slate-400">%</span>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  {[20, 25, 30, 35, 40].map(m => (
+                    <button key={m} onClick={() => setPendingMargin(String(m))}
+                      className={`flex-1 py-1.5 rounded-lg text-sm font-medium border transition-colors ${pendingMargin === String(m) ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-200 hover:border-blue-300"}`}>
+                      {m}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {pendingMargin && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 space-y-1">
+                  <p>Example: Agency cost ₹1,00,000</p>
+                  <p className="font-semibold">→ Client quote: ₹{(100000 * (1 + Number(pendingMargin) / 100)).toLocaleString("en-IN")} ({pendingMargin}% added)</p>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 p-5 border-t border-slate-100">
+              <button onClick={() => setShowMarginModal(false)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button
+                onClick={() => { const m = Math.min(100, Math.max(0, Number(pendingMargin) || 0)); setAgencyMargin(m); generatePlan(m); }}
+                disabled={!pendingMargin || Number(pendingMargin) < 0 || Number(pendingMargin) > 100}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                <Wand2 className="w-4 h-4" /> Generate Plan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── WhatsApp Modal ───────────────────────────────────────────────── */}
       {showWhatsApp && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl">
@@ -716,14 +896,12 @@ export default function BriefPlanner() {
                 ))}
               </div>
               <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-                WhatsApp Business API integration is pending. Once connected, this will send a campaign brief message to all contacts above.
+                WhatsApp Business API integration pending. Once connected, this will send a campaign brief to all contacts above.
               </div>
             </div>
             <div className="flex gap-2 p-5 border-t border-slate-100">
-              <button onClick={() => setShowWhatsApp(false)}
-                className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Cancel</button>
-              <button disabled
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-500 text-white text-sm font-medium rounded-lg opacity-60 cursor-not-allowed">
+              <button onClick={() => setShowWhatsApp(false)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button disabled className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-500 text-white text-sm font-medium rounded-lg opacity-60 cursor-not-allowed">
                 <MessageCircle className="w-4 h-4" /> Send via WhatsApp (Pending)
               </button>
             </div>
