@@ -27,6 +27,7 @@ export default function TodosModule({ verticalId, userId, members }: Props) {
       .from("todos")
       .select("*, profiles(full_name, email)")
       .eq("vertical_id", verticalId)
+      .eq("user_id", userId)
       .order("created_at", { ascending: false });
     setTodos((data || []) as Todo[]);
   }

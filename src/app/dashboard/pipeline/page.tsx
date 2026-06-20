@@ -9,7 +9,7 @@ export default async function PipelinePage() {
   if (!user) redirect("/login");
 
   const [{ data: leads }, { data: members }, { data: verticals }, { data: profile }] = await Promise.all([
-    supabase.from("leads").select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)").order("updated_at", { ascending: false }),
+    supabase.from("leads").select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)").eq("our_poc_id", user.id).order("updated_at", { ascending: false }),
     supabase.from("profiles").select("*").order("full_name"),
     supabase.from("verticals").select("*").order("order_index"),
     supabase.from("profiles").select("*").eq("id", user.id).single(),

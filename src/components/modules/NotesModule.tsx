@@ -32,6 +32,7 @@ export default function NotesModule({ verticalId, userId }: Props) {
       .from("notes")
       .select("*")
       .eq("vertical_id", verticalId)
+      .eq("user_id", userId)
       .order("pinned", { ascending: false })
       .order("updated_at", { ascending: false });
     setNotes((data || []) as Note[]);
