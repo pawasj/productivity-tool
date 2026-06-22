@@ -115,6 +115,23 @@ async function fetchInstagram(url: string): Promise<Partial<LinkMetrics> | null>
   const isReel = /\/reel\//.test(url);
   const type = isReel ? "reel" : "post";
 
+  const parseIgMetrics = (json: Record<string, unknown>, source: string) => {
+    const d = (json?.data ?? json?.media ?? json?.result ?? json) as Record<string, unknown>;
+    // API returns 200 with {error: "...429..."} when Instagram rate-limits — treat as miss
+    if (!d || d.error || (d.like_count == null && d.play_count == null && d.video_view_count == null)) return null;
+    const likes = (d.like_count as number) ?? undefined;
+    const comments = (d.comment_count as number) ?? undefined;
+    const views = (d.play_count ?? d.video_view_count ?? d.view_count) as number | undefined;
+    const shares = (d.share_count as number) ?? undefined;
+    const owner = (d.owner as Record<string, unknown>)?.username || (d.user as Record<string, unknown>)?.username || "creator";
+    return {
+      views, likes, comments, shares,
+      engagement: ((likes || 0) + (comments || 0) + (shares || 0)) || undefined,
+      fetch_status: "ok" as const,
+      extra_note: `Live data from Instagram (@${owner}) via ${source}`,
+    };
+  };
+
   // Method 1: get_media_data.php (Detailed Reel / Post Data)
   try {
     const res = await fetch(
@@ -123,20 +140,8 @@ async function fetchInstagram(url: string): Promise<Partial<LinkMetrics> | null>
     );
     if (res.ok) {
       const json = await res.json();
-      // Response shape varies; flatten common nesting
-      const d = json?.data ?? json?.media ?? json?.result ?? json;
-      if (d && (d.like_count != null || d.play_count != null || d.video_view_count != null)) {
-        const likes = d.like_count ?? undefined;
-        const comments = d.comment_count ?? undefined;
-        const views = d.play_count ?? d.video_view_count ?? d.view_count ?? undefined;
-        const shares = d.share_count ?? undefined;
-        return {
-          views, likes, comments, shares,
-          engagement: ((likes || 0) + (comments || 0) + (shares || 0)) || undefined,
-          fetch_status: "ok",
-          extra_note: `Live data from Instagram (@${d.owner?.username || d.user?.username || "creator"})`,
-        };
-      }
+      const parsed = parseIgMetrics(json, "get_media_data");
+      if (parsed) return parsed;
     }
   } catch { /* fall through */ }
 
@@ -148,19 +153,8 @@ async function fetchInstagram(url: string): Promise<Partial<LinkMetrics> | null>
     );
     if (res.ok) {
       const json = await res.json();
-      const d = json?.data ?? json?.media ?? json?.result ?? json;
-      if (d && (d.like_count != null || d.play_count != null || d.video_view_count != null)) {
-        const likes = d.like_count ?? undefined;
-        const comments = d.comment_count ?? undefined;
-        const views = d.play_count ?? d.video_view_count ?? d.view_count ?? undefined;
-        const shares = d.share_count ?? undefined;
-        return {
-          views, likes, comments, shares,
-          engagement: ((likes || 0) + (comments || 0) + (shares || 0)) || undefined,
-          fetch_status: "ok",
-          extra_note: `Live data from Instagram (@${d.owner?.username || d.user?.username || "creator"})`,
-        };
-      }
+      const parsed = parseIgMetrics(json, "get_media_data_v2");
+      if (parsed) return parsed;
     }
   } catch { /* fall through */ }
 
