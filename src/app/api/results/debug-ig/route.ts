@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Temporary debug endpoint — remove after confirming Instagram API works
-// Usage: GET /api/results/debug-ig?url=https://www.instagram.com/reel/SHORTCODE/
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url") || "";
   const rapidApiKey = process.env.RAPIDAPI_KEY;
@@ -13,7 +11,6 @@ export async function GET(req: NextRequest) {
     url_received: url,
     shortcode_extracted: shortcode || null,
     rapidapi_key_set: !!rapidApiKey,
-    rapidapi_key_prefix: rapidApiKey ? rapidApiKey.slice(0, 8) + "..." : null,
   };
 
   if (!rapidApiKey || !shortcode) {
@@ -24,34 +21,45 @@ export async function GET(req: NextRequest) {
   const headers = {
     "x-rapidapi-host": HOST,
     "x-rapidapi-key": rapidApiKey,
+    "Content-Type": "application/json",
   };
 
-  // Try every common endpoint pattern this API might expose
+  // Try every plausible path + method combination including POST bodies
   const attempts = [
-    { name: "get_post_by_shortcode",  method: "GET",  url: `https://${HOST}/v1/post_info?shortcode=${shortcode}` },
-    { name: "get_post_by_url",        method: "GET",  url: `https://${HOST}/v1/post_info?url=${encodeURIComponent(url)}` },
-    { name: "media_info_shortcode",   method: "GET",  url: `https://${HOST}/media/info?shortcode=${shortcode}` },
-    { name: "media_by_url",           method: "GET",  url: `https://${HOST}/media?url=${encodeURIComponent(url)}` },
-    { name: "reel_by_shortcode",      method: "GET",  url: `https://${HOST}/reel?shortcode=${shortcode}` },
-    { name: "post_by_shortcode",      method: "GET",  url: `https://${HOST}/post?shortcode=${shortcode}` },
-    { name: "post_by_url_param",      method: "GET",  url: `https://${HOST}/post?url=${encodeURIComponent(url)}` },
-    { name: "get_media",              method: "GET",  url: `https://${HOST}/get_media?shortcode=${shortcode}` },
-    { name: "v2_post_info",           method: "GET",  url: `https://${HOST}/v2/post_info?shortcode=${shortcode}` },
-    { name: "scrape_post",            method: "GET",  url: `https://${HOST}/scrape?url=${encodeURIComponent(url)}` },
+    { name: "GET_root",              method: "GET",  url: `https://${HOST}/` },
+    { name: "GET_fetch",             method: "GET",  url: `https://${HOST}/fetch?url=${encodeURIComponent(url)}` },
+    { name: "GET_info",              method: "GET",  url: `https://${HOST}/info?url=${encodeURIComponent(url)}` },
+    { name: "GET_reel_info",         method: "GET",  url: `https://${HOST}/reel/info?shortcode=${shortcode}` },
+    { name: "GET_reels",             method: "GET",  url: `https://${HOST}/reels?shortcode=${shortcode}` },
+    { name: "GET_instagram",         method: "GET",  url: `https://${HOST}/instagram?url=${encodeURIComponent(url)}` },
+    { name: "GET_media_details",     method: "GET",  url: `https://${HOST}/media-details?shortcode=${shortcode}` },
+    { name: "GET_shortcode",         method: "GET",  url: `https://${HOST}/${shortcode}` },
+    { name: "POST_url_body",         method: "POST", url: `https://${HOST}/`, body: JSON.stringify({ url }) },
+    { name: "POST_scrape",           method: "POST", url: `https://${HOST}/scrape`, body: JSON.stringify({ url }) },
+    { name: "POST_fetch",            method: "POST", url: `https://${HOST}/fetch`, body: JSON.stringify({ url, shortcode }) },
+    { name: "POST_media",            method: "POST", url: `https://${HOST}/media`, body: JSON.stringify({ shortcode }) },
+    { name: "GET_no_host_override",  method: "GET",  url: `https://${HOST}/post_info?shortcode=${shortcode}` },
+    { name: "GET_reel_shortcode",    method: "GET",  url: `https://${HOST}/reel_info?shortcode=${shortcode}` },
   ];
 
   for (const attempt of attempts) {
     try {
-      const res = await fetch(attempt.url, { method: attempt.method, headers });
+      const res = await fetch(attempt.url, {
+        method: attempt.method,
+        headers,
+        ...(attempt.body ? { body: attempt.body } : {}),
+      });
       const body = await res.text();
       debug[attempt.name] = {
         status: res.status,
         ok: res.ok,
-        url: attempt.url,
-        body: body.slice(0, 1500),
+        body: body.slice(0, 800),
       };
-      // Stop at first success so we can clearly see the working endpoint + shape
-      if (res.ok) break;
+      if (res.ok) {
+        debug["WORKING_ENDPOINT"] = attempt.url;
+        debug["WORKING_METHOD"] = attempt.method;
+        break;
+      }
     } catch (e) {
       debug[attempt.name] = { error: String(e) };
     }
