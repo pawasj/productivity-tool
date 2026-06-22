@@ -25,6 +25,243 @@ interface LinkMetrics {
   fetched_at: string;
 }
 
+// ─── YouTube ──────────────────────────────────────────────────────────────────
+// Parses view count from the ytInitialData JSON blob embedded in the page HTML.
+// This is publicly available without login for any public YouTube video.
+async function fetchYouTube(url: string): Promise<Partial<LinkMetrics> | null> {
+  try {
+    const idMatch = url.match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/);
+    if (!idMatch) return null;
+    const videoId = idMatch[1];
+
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const viewMatch = html.match(/"viewCount":"(\d+)"/);
+    const likeMatch = html.match(/"likeCount":"(\d+)"/);
+    const commentMatch = html.match(/"commentCount":"(\d+)"/);
+
+    if (!viewMatch) return { fetch_status: "partial", extra_note: "YouTube page loaded but viewCount not found (video may be private)" };
+
+    const views = parseInt(viewMatch[1]);
+    const likes = likeMatch ? parseInt(likeMatch[1]) : undefined;
+    const comments = commentMatch ? parseInt(commentMatch[1]) : undefined;
+
+    return {
+      views,
+      likes,
+      comments,
+      engagement: (likes || 0) + (comments || 0) || undefined,
+      fetch_status: "ok",
+      extra_note: "Live data from YouTube",
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Reddit ───────────────────────────────────────────────────────────────────
+// Reddit has a free public JSON API — append .json to any post URL.
+async function fetchReddit(url: string): Promise<Partial<LinkMetrics> | null> {
+  try {
+    const cleanUrl = url.replace(/\?.*/, "").replace(/\/$/, "");
+    const jsonUrl = `${cleanUrl}.json?limit=0&raw_json=1`;
+    const res = await fetch(jsonUrl, {
+      headers: { "User-Agent": "BCC-Media-Analytics/1.0", Accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const post = data?.[0]?.data?.children?.[0]?.data;
+    if (!post) return null;
+
+    return {
+      likes: post.ups ?? undefined,
+      comments: post.num_comments ?? undefined,
+      views: post.view_count ?? undefined,
+      engagement: ((post.ups || 0) + (post.num_comments || 0)) || undefined,
+      fetch_status: "ok",
+      extra_note: `Reddit: ${post.ups} upvotes · ${post.num_comments} comments`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Instagram HTML scrape ────────────────────────────────────────────────────
+// Tries multiple methods to get real engagement metrics from public IG posts.
+async function fetchInstagram(url: string): Promise<Partial<LinkMetrics> | null> {
+  try {
+    // Method 1: fetch page HTML and parse Open Graph description + video views
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+      },
+    });
+
+    if (res.ok) {
+      const html = await res.text();
+
+      // og:description often contains "X Likes, Y Comments"
+      const descMatch = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/i)
+        || html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:description"/i);
+      const desc = descMatch?.[1] || "";
+
+      const likeMatch = desc.match(/([\d,\.]+[KMB]?)\s*(?:Likes?|likes?|❤)/i);
+      const commentMatch = desc.match(/([\d,\.]+[KMB]?)\s*(?:Comments?|comments?)/i);
+
+      // Video view count in various formats
+      const viewMatch = html.match(/"video_view_count"\s*:\s*(\d+)/)
+        || html.match(/"playCount"\s*:\s*(\d+)/)
+        || html.match(/"play_count"\s*:\s*(\d+)/);
+
+      function parseSocial(raw: string): number | undefined {
+        if (!raw) return undefined;
+        const clean = raw.replace(/,/g, "");
+        const m = clean.match(/^([\d.]+)([KMB]?)$/i);
+        if (!m) return undefined;
+        const n = parseFloat(m[1]);
+        const mult = { k: 1e3, m: 1e6, b: 1e9 }[m[2].toLowerCase()] ?? 1;
+        return Math.round(n * mult);
+      }
+
+      const likes = parseSocial(likeMatch?.[1] || "");
+      const comments = parseSocial(commentMatch?.[1] || "");
+      const views = viewMatch ? parseInt(viewMatch[1]) : undefined;
+
+      if (likes || comments || views) {
+        return {
+          likes,
+          comments,
+          views,
+          engagement: (likes || 0) + (comments || 0) || undefined,
+          fetch_status: "ok",
+          extra_note: "Live data scraped from Instagram page",
+        };
+      }
+
+      // Method 2: oEmbed confirmation fallback
+      const oembedRes = await fetch(
+        `https://api.instagram.com/oembed/?url=${encodeURIComponent(url)}&format=json`,
+        { headers: { "User-Agent": "BCC-Media-Analytics/1.0" } }
+      );
+      if (oembedRes.ok) {
+        const odata = await oembedRes.json();
+        if (odata.author_name) {
+          return {
+            fetch_status: "partial",
+            extra_note: `Post confirmed public (@${odata.author_name}). Instagram restricts metric access — enter likes/views manually from your Instagram app or Creator Studio.`,
+          };
+        }
+      }
+    }
+
+    return {
+      fetch_status: "partial",
+      extra_note: "Instagram post loaded but metrics not accessible publicly. Enter likes, comments and views manually from Instagram app.",
+    };
+  } catch {
+    return {
+      fetch_status: "partial",
+      extra_note: "Could not reach Instagram post. Check the URL and ensure the post is public.",
+    };
+  }
+}
+
+// ─── LinkedIn oEmbed ──────────────────────────────────────────────────────────
+async function fetchLinkedIn(url: string): Promise<Partial<LinkMetrics> | null> {
+  try {
+    const oembedUrl = `https://www.linkedin.com/oembed?url=${encodeURIComponent(url)}`;
+    const res = await fetch(oembedUrl, { headers: { "User-Agent": "BCC-Media-Analytics/1.0" } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.title) return null;
+
+    return {
+      fetch_status: "partial",
+      extra_note: `LinkedIn post confirmed ("${data.title?.slice(0, 60)}…"). LinkedIn's public API does not expose engagement metrics — enter manually from the post.`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Anthropic web_search fallback ────────────────────────────────────────────
+// For platforms where direct fetch isn't enough, ask Claude to search for
+// publicly available info about the post.
+async function fetchWithAI(row: LinkInput): Promise<Partial<LinkMetrics> | null> {
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 800,
+      tools: [{ type: "web_search_20250305" as "web_search_20250305", name: "web_search" }],
+      messages: [{
+        role: "user",
+        content: `Use web_search to find current, real engagement metrics for this social media post:
+
+URL: ${row.live_link}
+Platform: ${row.platform}
+Creator/Page: ${row.handle_name}
+
+Search for the post and find its REAL, LIVE stats. Look for:
+- View count / play count
+- Likes / reactions count
+- Comment count
+- Share count
+
+RULES:
+- Use web_search to fetch actual data
+- Only report numbers you actually found in search results
+- Do NOT guess or estimate
+- If a metric isn't publicly available, use null
+
+Respond with ONLY this JSON (no other text):
+{"views": <number|null>, "likes": <number|null>, "comments": <number|null>, "shares": <number|null>, "fetch_status": "ok"|"partial"|"unavailable", "extra_note": "<what you found>"}`,
+      }],
+    });
+
+    // Collect all text blocks (web_search tool responses come as text at end)
+    let jsonStr = "";
+    for (const block of response.content) {
+      if (block.type === "text") jsonStr += block.text;
+    }
+
+    const jsonMatch = jsonStr.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      views: parsed.views ?? undefined,
+      likes: parsed.likes ?? undefined,
+      comments: parsed.comments ?? undefined,
+      shares: parsed.shares ?? undefined,
+      engagement: parsed.engagement ?? (((parsed.likes || 0) + (parsed.comments || 0) + (parsed.shares || 0)) || undefined),
+      fetch_status: parsed.fetch_status || "partial",
+      extra_note: parsed.extra_note,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Platform detector ────────────────────────────────────────────────────────
+function detectPlatform(url: string): string {
+  if (/youtube\.com|youtu\.be/.test(url)) return "youtube";
+  if (/reddit\.com/.test(url)) return "reddit";
+  if (/instagram\.com/.test(url)) return "instagram";
+  if (/linkedin\.com/.test(url)) return "linkedin";
+  if (/twitter\.com|x\.com/.test(url)) return "twitter";
+  return "other";
+}
+
+// ─── Main handler ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const { rows }: { rows: LinkInput[] } = await req.json();
@@ -33,77 +270,40 @@ export async function POST(req: NextRequest) {
     const results: LinkMetrics[] = [];
 
     for (const row of rows) {
+      const base = { handle_name: row.handle_name, platform: row.platform, live_link: row.live_link, fetched_at: new Date().toISOString() };
+
       if (!row.live_link?.startsWith("http")) {
-        results.push({ ...row, fetch_status: "unavailable", fetched_at: new Date().toISOString(), extra_note: "No valid URL provided" });
+        results.push({ ...base, fetch_status: "unavailable", extra_note: "No valid URL provided" });
         continue;
       }
 
-      try {
-        const prompt = `You are a social media analytics researcher. Fetch REAL, LIVE metrics from this ${row.platform} post by visiting the URL below. Do NOT guess or hallucinate — only report numbers that are publicly visible on the page.
+      const urlPlatform = detectPlatform(row.live_link);
 
-URL: ${row.live_link}
-Creator/Page: ${row.handle_name}
-Platform: ${row.platform}
-${row.deliverable_type ? `Content Type: ${row.deliverable_type}` : ""}
+      let metrics: Partial<LinkMetrics> | null = null;
 
-Instructions:
-1. Visit the URL using web search/browse
-2. Report ONLY publicly visible metrics (views, likes, comments, shares, reach if shown)
-3. For YouTube: views are public. For Instagram: likes may be hidden. For Reddit: upvotes and comments are public. For LinkedIn: reactions and comments are public.
-4. If a metric is not publicly available, return null for that field — do not estimate
-5. Return a JSON object with this EXACT structure (use null for unavailable):
-{
-  "views": <number or null>,
-  "likes": <number or null>,
-  "comments": <number or null>,
-  "shares": <number or null>,
-  "reach": <number or null>,
-  "engagement": <number or null - total engagements if calculable>,
-  "fetch_status": "ok" | "partial" | "unavailable",
-  "extra_note": "<any important note about data availability>"
-}
+      // 1. Try direct platform-specific fetcher (most accurate)
+      if (urlPlatform === "youtube") metrics = await fetchYouTube(row.live_link);
+      else if (urlPlatform === "reddit") metrics = await fetchReddit(row.live_link);
+      else if (urlPlatform === "instagram") metrics = await fetchInstagram(row.live_link);
+      else if (urlPlatform === "linkedin") metrics = await fetchLinkedIn(row.live_link);
 
-Return ONLY the JSON, nothing else.`;
-
-        const response = await anthropic.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: 500,
-          tools: [{ type: "web_search_20250305" as "web_search_20250305", name: "web_search" }],
-          messages: [{ role: "user", content: prompt }],
-        });
-
-        // Extract the text response from the final message
-        let jsonStr = "";
-        for (const block of response.content) {
-          if (block.type === "text") {
-            jsonStr = block.text;
-            break;
-          }
+      // 2. If direct fetch got nothing or only partial, try AI search (for non-Instagram platforms)
+      if (!metrics || (metrics.fetch_status === "partial" && urlPlatform !== "instagram" && urlPlatform !== "linkedin")) {
+        const aiMetrics = await fetchWithAI(row);
+        if (aiMetrics) {
+          // Merge: prefer direct metrics where available, fill gaps with AI
+          metrics = {
+            ...aiMetrics,
+            ...Object.fromEntries(Object.entries(metrics || {}).filter(([, v]) => v != null && v !== undefined)),
+            extra_note: metrics?.extra_note || aiMetrics.extra_note,
+          };
         }
+      }
 
-        // Parse the JSON
-        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          results.push({
-            handle_name: row.handle_name,
-            platform: row.platform,
-            live_link: row.live_link,
-            views: parsed.views ?? undefined,
-            likes: parsed.likes ?? undefined,
-            comments: parsed.comments ?? undefined,
-            shares: parsed.shares ?? undefined,
-            reach: parsed.reach ?? undefined,
-            engagement: parsed.engagement != null ? parsed.engagement : (((parsed.likes || 0) + (parsed.comments || 0) + (parsed.shares || 0)) || undefined),
-            extra_note: parsed.extra_note,
-            fetch_status: parsed.fetch_status || "partial",
-            fetched_at: new Date().toISOString(),
-          });
-        } else {
-          results.push({ ...row, fetch_status: "unavailable", fetched_at: new Date().toISOString(), extra_note: "Could not parse metrics from page" });
-        }
-      } catch {
-        results.push({ ...row, fetch_status: "unavailable", fetched_at: new Date().toISOString(), extra_note: "Fetch failed" });
+      if (!metrics) {
+        results.push({ ...base, fetch_status: "unavailable", extra_note: "Could not retrieve metrics from this URL" });
+      } else {
+        results.push({ ...base, ...metrics, fetch_status: metrics.fetch_status ?? "partial" });
       }
     }
 

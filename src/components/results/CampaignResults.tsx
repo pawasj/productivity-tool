@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase";
 import {
   BarChart3, Link2, RefreshCw, FileDown, Target,
   CheckCircle, AlertCircle, Clock, Loader2, Save,
-  TrendingUp, Eye, Heart, MessageCircle, Share2, Users,
+  TrendingUp, Eye, Heart, MessageCircle, Share2, Users, Search,
 } from "lucide-react";
 import type { PlanRow, ResultRow } from "@/lib/types";
 
@@ -59,17 +59,25 @@ export default function CampaignResults({ initialBriefId }: Props) {
   const [result, setResult] = useState<CampaignResult | null>(null);
   const [rows, setRows] = useState<ResultRow[]>([]);
   const [targets, setTargets] = useState({ deliverables: "", views: "", reach: "", engagements: "", impressions: "" });
+  const [campaignSearch, setCampaignSearch] = useState("");
   const [analysing, setAnalysing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
-  const [analyseProgress, setAnalyseProgress] = useState(0);
   const supabase = createClient();
 
-  // Load all completed/approved briefs
+  const filteredBriefs = useMemo(
+    () => briefs.filter(b =>
+      b.brand_name.toLowerCase().includes(campaignSearch.toLowerCase()) ||
+      (b.industry || "").toLowerCase().includes(campaignSearch.toLowerCase())
+    ),
+    [briefs, campaignSearch]
+  );
+
+  // Load all briefs that have a media plan (regardless of status)
   useEffect(() => {
     supabase.from("client_briefs")
       .select("id, brand_name, industry, campaign_type, campaign_objective, status, media_plan_json, created_at")
-      .in("status", ["approved", "completed"])
+      .not("media_plan_json", "is", null)
       .order("created_at", { ascending: false })
       .then(({ data }) => setBriefs((data || []) as Brief[]));
   }, []);
@@ -138,7 +146,6 @@ export default function CampaignResults({ initialBriefId }: Props) {
     const linksToFetch = rows.filter(r => r.live_link?.startsWith("http"));
     if (!linksToFetch.length) { alert("Add at least one live link (must start with http)"); return; }
     setAnalysing(true);
-    setAnalyseProgress(0);
 
     try {
       const res = await fetch("/api/results/analyze", {
@@ -188,6 +195,11 @@ export default function CampaignResults({ initialBriefId }: Props) {
     const viewsPct = pct(totalViews, targets.views ? parseInt(targets.views) : undefined);
     const reachPct = pct(totalReach, targets.reach ? parseInt(targets.reach) : undefined);
     const engPct = pct(totalEngagement, targets.engagements ? parseInt(targets.engagements) : undefined);
+
+    const totalClientInvestment = rows.reduce((s, r) => s + (r.client_total || 0), 0);
+    const cpv = totalViews > 0 && totalClientInvestment > 0 ? (totalClientInvestment / totalViews).toFixed(2) : null;
+    const cpr = totalReach > 0 && totalClientInvestment > 0 ? (totalClientInvestment / totalReach).toFixed(2) : null;
+    const cpe = totalEngagement > 0 && totalClientInvestment > 0 ? (totalClientInvestment / totalEngagement).toFixed(2) : null;
 
     const creatorRows = rows.filter(r => r.live_link).map(r => `
       <tr>
@@ -346,37 +358,28 @@ ${selectedBrief.campaign_objective ? `
 </div>
 
 <div class="section">
-  <div class="section-title">Media Plan Overview</div>
-  <table>
-    <thead>
-      <tr>
-        <th>Handle / Page</th>
-        <th>Platform</th>
-        <th>Category</th>
-        <th>Followers</th>
-        <th>Deliverable</th>
-        <th>Qty</th>
-        <th>Agency Rate</th>
-        <th>Client Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rows.map(r => `<tr>
-        <td><strong>${r.handle_name}</strong></td>
-        <td><span class="badge">${r.platform}</span></td>
-        <td>${r.category || "—"}</td>
-        <td>${r.followers || "—"}</td>
-        <td>${r.deliverable_type}</td>
-        <td>${r.quantity}</td>
-        <td>₹${Number(r.rate).toLocaleString("en-IN")}</td>
-        <td><strong>₹${Number(r.client_total).toLocaleString("en-IN")}</strong></td>
-      </tr>`).join("")}
-      <tr style="background:#f8fafc">
-        <td colspan="7" style="text-align:right;font-weight:700;color:#475569">Total Client Investment</td>
-        <td><strong>₹${rows.reduce((s, r) => s + (r.client_total || 0), 0).toLocaleString("en-IN")}</strong></td>
-      </tr>
-    </tbody>
-  </table>
+  <div class="section-title">Campaign Investment &amp; ROI</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px">
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:24px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Total Client Investment</div>
+      <div style="font-size:32px;font-weight:800;color:#15803d">₹${totalClientInvestment.toLocaleString("en-IN")}</div>
+    </div>
+    ${cpv ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:24px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Cost Per View</div>
+      <div style="font-size:32px;font-weight:800;color:#1e40af">₹${cpv}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:4px">${fmtNum(totalViews)} total views</div>
+    </div>` : ""}
+    ${cpr ? `<div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:12px;padding:24px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Cost Per Reach</div>
+      <div style="font-size:32px;font-weight:800;color:#6d28d9">₹${cpr}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:4px">${fmtNum(totalReach)} total reach</div>
+    </div>` : ""}
+    ${cpe ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:24px;text-align:center">
+      <div style="font-size:11px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Cost Per Engagement</div>
+      <div style="font-size:32px;font-weight:800;color:#b45309">₹${cpe}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:4px">${fmtNum(totalEngagement)} total engagements</div>
+    </div>` : ""}
+  </div>
 </div>
 
 <div class="footer">
@@ -390,20 +393,6 @@ ${selectedBrief.campaign_objective ? `
 
     const win = window.open("", "_blank");
     if (win) { win.document.write(html); win.document.close(); }
-  }
-
-  if (briefs.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-center p-12">
-        <div>
-          <BarChart3 className="w-14 h-14 mx-auto mb-4 text-slate-200" />
-          <h2 className="text-lg font-semibold text-slate-800 mb-2">No Completed Campaigns Yet</h2>
-          <p className="text-sm text-slate-400 max-w-sm">
-            Approve a campaign brief in Distribution Hub, then mark it as Completed in Sales Pipeline to start tracking results.
-          </p>
-        </div>
-      </div>
-    );
   }
 
   return (
@@ -420,18 +409,31 @@ ${selectedBrief.campaign_objective ? `
           </div>
         </div>
 
-        {/* Brief selector */}
-        <div className="flex items-center gap-3">
+        {/* Search + Brief selector */}
+        <div className="flex flex-col gap-2 w-full">
+          <div className="relative w-full max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search campaigns by brand or industry…"
+              value={campaignSearch}
+              onChange={e => setCampaignSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+          <div className="flex items-center gap-3">
           <select
             value={selectedBriefId || ""}
             onChange={e => setSelectedBriefId(e.target.value || null)}
             className="flex-1 max-w-sm px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
           >
-            <option value="">Select a Campaign…</option>
-            {briefs.map(b => (
+            <option value="">
+              {briefs.length === 0 ? "No campaigns with media plans yet…" : `Select a Campaign… (${filteredBriefs.length} found)`}
+            </option>
+            {filteredBriefs.map(b => (
               <option key={b.id} value={b.id}>
                 {b.brand_name}{b.industry ? ` · ${b.industry}` : ""}
-                {b.status === "completed" ? " ✓" : " (approved)"}
+                {b.status === "completed" ? " ✓" : ""}
               </option>
             ))}
           </select>
@@ -453,6 +455,7 @@ ${selectedBrief.campaign_objective ? `
               </button>
             </div>
           )}
+          </div>
         </div>
       </div>
 
@@ -460,7 +463,10 @@ ${selectedBrief.campaign_objective ? `
         <div className="flex-1 flex items-center justify-center text-slate-400">
           <div className="text-center">
             <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p className="text-sm">Select a campaign above to view results</p>
+            {briefs.length === 0
+              ? <><p className="text-sm font-medium text-slate-600">No campaigns with media plans yet</p><p className="text-xs mt-1 max-w-xs">Build a media plan in Distribution Hub for a campaign brief to start tracking results here.</p></>
+              : <p className="text-sm">Search and select a campaign above to view results</p>
+            }
           </div>
         </div>
       ) : (

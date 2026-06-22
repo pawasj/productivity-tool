@@ -76,6 +76,7 @@ export default function DiscussionBoard({ currentUser, allMembers }: Props) {
     const { data } = await supabase
       .from("forum_threads")
       .select("*")
+      .contains("members", [currentUser.id])
       .order("updated_at", { ascending: false });
 
     if (!data) return;

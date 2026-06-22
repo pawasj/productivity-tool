@@ -321,7 +321,26 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                         <p className="text-xs text-slate-400">{formatDate(lead.updated_at)}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <button
+                            onClick={() => router.push("/dashboard/distro")}
+                            className="flex items-center gap-1 text-xs px-2.5 py-1 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium whitespace-nowrap">
+                            <ExternalLink className="w-3 h-3" /> Create Brief
+                          </button>
+                          {lead.status !== "won" && (
+                            <button
+                              onClick={() => updateStatus(lead, "won")}
+                              className="flex items-center gap-1 text-xs px-2.5 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium whitespace-nowrap">
+                              <CheckCircle2 className="w-3 h-3" /> Mark Won
+                            </button>
+                          )}
+                          {lead.status === "won" && (
+                            <button
+                              onClick={() => router.push("/dashboard/results")}
+                              className="flex items-center gap-1 text-xs px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors font-medium whitespace-nowrap">
+                              <CheckCircle2 className="w-3 h-3" /> View Results
+                            </button>
+                          )}
                           <button onClick={() => openEdit(lead)} className="p-1.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors" title="Edit lead">
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>

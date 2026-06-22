@@ -20,17 +20,31 @@ export default function TeamTasksModule({ verticalId, userId, members }: Props) 
   const [saving, setSaving] = useState(false);
   const supabase = createClient();
 
-  useEffect(() => { fetchTodos(); }, [verticalId]);
+  useEffect(() => {
+    fetchTodos();
+
+    // Realtime: re-fetch when any todo in this vertical changes so assigned members see it instantly
+    const channel = supabase
+      .channel(`team-tasks:${verticalId}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "todos",
+        filter: `vertical_id=eq.${verticalId}`,
+      }, () => { fetchTodos(); })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [verticalId]);
 
   async function fetchTodos() {
-    // Show tasks assigned to this vertical AND tasks assigned to this user
+    // Fetch all todos in this vertical — RLS policy handles visibility
+    // (includes tasks created by user AND tasks assigned to user)
     const { data } = await supabase
       .from("todos")
       .select("*, profiles(full_name, email)")
       .eq("vertical_id", verticalId)
-      .or(`user_id.eq.${userId},assigned_to.cs.{"${userId}"}`)
       .order("created_at", { ascending: false });
-    // dedupe
     const seen = new Set<string>();
     const deduped = (data || []).filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
     setTodos(deduped as Todo[]);

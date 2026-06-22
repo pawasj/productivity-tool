@@ -44,6 +44,7 @@ export default function OverviewModule({ verticals, onSelectVertical }: Props) {
   const [globalStats, setGlobalStats] = useState({ todos: 0, followups: 0, meetings: 0, ideas: 0, leads: 0 });
   const [calEvents, setCalEvents] = useState<CalEvent[]>([]);
   const [calConnected, setCalConnected] = useState(false);
+  const [calNeedsReconnect, setCalNeedsReconnect] = useState(false);
   const [calLoading, setCalLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [assigningEvent, setAssigningEvent] = useState<string | null>(null);
@@ -57,9 +58,10 @@ export default function OverviewModule({ verticals, onSelectVertical }: Props) {
       const res = await fetch("/api/calendar/events");
       const json = await res.json();
       setCalConnected(json.connected || false);
+      setCalNeedsReconnect(json.reconnect_required || false);
       setCalEvents(json.events || []);
     } catch {
-      // Calendar not connected or error — silent
+      // Network error — leave existing state, don't clear connection
     } finally {
       setCalLoading(false);
     }
@@ -168,17 +170,30 @@ export default function OverviewModule({ verticals, onSelectVertical }: Props) {
           <div className="bg-white rounded-xl border border-slate-200 p-4 text-sm text-slate-400">Syncing calendar…</div>
         )}
 
-        {!calLoading && !calConnected && (
-          <div className="bg-white rounded-xl border border-dashed border-slate-200 p-5 text-center">
-            <Calendar className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-            <p className="text-sm text-slate-500 mb-1">No calendar connected</p>
-            <p className="text-xs text-slate-400">Go to Admin Panel → connect your Google Calendar to see upcoming meetings here</p>
+        {!calLoading && calNeedsReconnect && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-amber-800">Calendar session expired</p>
+              <p className="text-xs text-amber-600 mt-0.5">Your Google Calendar access needs to be renewed. Click Reconnect — it only takes a second.</p>
+            </div>
+            <a href="/api/auth/google-calendar"
+              className="shrink-0 text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium">
+              Reconnect →
+            </a>
           </div>
         )}
 
-        {!calLoading && calConnected && calEvents.length === 0 && (
+        {!calLoading && !calConnected && !calNeedsReconnect && (
+          <div className="bg-white rounded-xl border border-dashed border-slate-200 p-5 text-center">
+            <Calendar className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+            <p className="text-sm text-slate-500 mb-1">No calendar connected</p>
+            <p className="text-xs text-slate-400">Go to My Profile → Calendar tab to connect your Google Calendar</p>
+          </div>
+        )}
+
+        {!calLoading && calConnected && !calNeedsReconnect && calEvents.length === 0 && (
           <div className="bg-white rounded-xl border border-slate-200 p-4 text-sm text-slate-400">
-            No meetings in the next 7 days.
+            No meetings in the next 14 days.
           </div>
         )}
 
