@@ -144,16 +144,23 @@ export default function ChatWidget() {
       const existing = conversations.find(c => !c.is_group && c.members.some(m => m.id === other) && c.members.some(m => m.id === currentUser.id));
       if (existing) { setActiveConvId(existing.id); setView("chat"); setSelectedMembers([]); return; }
     }
-    const { data: conv, error: convErr } = await supabase.from("chat_conversations").insert({
-      name: isGroup ? (groupName.trim() || null) : null, is_group: isGroup, created_by: currentUser.id,
-    }).select().single();
-    if (convErr || !conv) {
-      console.error("Failed to create conversation:", convErr?.message);
-      alert("Could not start chat. Please check Supabase SQL — see console for details.");
+    // Generate ID client-side so we can add members before any SELECT round-trip.
+    // (The chat_conversations SELECT policy requires membership, but members haven't
+    //  been inserted yet when we .select() the new row — so we avoid that SELECT entirely.)
+    const convId = crypto.randomUUID();
+    const { error: convErr } = await supabase.from("chat_conversations").insert({
+      id: convId,
+      name: isGroup ? (groupName.trim() || null) : null,
+      is_group: isGroup,
+      created_by: currentUser.id,
+    });
+    if (convErr) {
+      console.error("Failed to create conversation:", convErr.message);
+      alert("Could not start chat: " + convErr.message);
       return;
     }
     const { error: membersErr } = await supabase.from("chat_members").insert(
-      allParticipants.map(uid => ({ conversation_id: conv.id, user_id: uid }))
+      allParticipants.map(uid => ({ conversation_id: convId, user_id: uid }))
     );
     if (membersErr) {
       console.error("Failed to add members:", membersErr.message);
@@ -164,9 +171,9 @@ export default function ChatWidget() {
     const displayName = isGroup
       ? (groupName.trim() || convMembers.filter(m => m.id !== currentUser.id).map(m => m.full_name?.split(" ")[0]).join(", "))
       : convMembers.find(m => m.id !== currentUser.id)?.full_name || "Chat";
-    const newConv: Conversation = { id: conv.id, name: displayName, is_group: isGroup, members: convMembers };
+    const newConv: Conversation = { id: convId, name: displayName, is_group: isGroup, members: convMembers };
     setConversations(prev => [newConv, ...prev]);
-    setActiveConvId(conv.id);
+    setActiveConvId(convId);
     setView("chat");
     setSelectedMembers([]);
     setGroupName("");
