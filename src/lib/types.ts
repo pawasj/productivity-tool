@@ -277,6 +277,31 @@ export interface MediaPlan {
   brief?: ClientBrief;
 }
 
+export interface PlanRow {
+  handle_name: string;
+  platform: string;
+  category: string;
+  followers: string;
+  deliverable_type: string;
+  quantity: number;
+  rate: number;
+  total_cost: number;
+  client_rate: number;
+  client_total: number;
+  contact_no?: string;
+}
+
+export interface ResultRow extends PlanRow {
+  live_link?: string;
+  views?: number;
+  reach?: number;
+  engagement?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  fetched_at?: string;
+}
+
 export interface MediaPlanItem {
   id: string;
   plan_id: string;

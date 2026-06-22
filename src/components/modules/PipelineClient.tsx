@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import {
   TrendingUp, Plus, X, Search, FileText,
-  Building2, MapPin, Edit3, Trash2, ExternalLink,
+  MapPin, Edit3, Trash2, ExternalLink, CheckCircle2,
 } from "lucide-react";
 import type { Lead, Profile, Vertical } from "@/lib/types";
 import { STATUS_COLORS, formatDate } from "@/lib/utils";
@@ -393,6 +393,24 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                             onClick={() => openBriefInDistro(String(brief.id))}
                             className="flex items-center gap-1 text-xs px-2.5 py-1 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors font-medium whitespace-nowrap">
                             + Narrative
+                          </button>
+                        )}
+                        {String(brief.status || "") !== "completed" && Boolean(brief.media_plan_json) && (
+                          <button
+                            onClick={async () => {
+                              const supabase = createClient();
+                              await supabase.from("client_briefs").update({ status: "completed" }).eq("id", String(brief.id));
+                              router.push(`/dashboard/results?brief=${brief.id}`);
+                            }}
+                            className="flex items-center gap-1 text-xs px-2.5 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium whitespace-nowrap">
+                            <CheckCircle2 className="w-3 h-3" /> Mark Complete
+                          </button>
+                        )}
+                        {String(brief.status || "") === "completed" && (
+                          <button
+                            onClick={() => router.push(`/dashboard/results?brief=${brief.id}`)}
+                            className="flex items-center gap-1 text-xs px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors font-medium whitespace-nowrap">
+                            <CheckCircle2 className="w-3 h-3" /> View Results
                           </button>
                         )}
                       </div>

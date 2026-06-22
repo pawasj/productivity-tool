@@ -6,9 +6,12 @@ import {
   Wand2, FileText, Download, Check, Lock, Pencil,
   ChevronDown, ChevronUp, Loader2, Plus, Trash2,
   Search, MessageCircle, X, DatabaseZap, LayoutList,
-  ExternalLink, Percent,
+  ExternalLink, Percent, LayoutGrid,
 } from "lucide-react";
+import ManualPlanBuilder from "./ManualPlanBuilder";
 import * as XLSX from "xlsx";
+
+import type { PlanRow } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,20 +29,6 @@ interface BriefForm {
   timeline: string;
   deliverables: string;
   additional_notes: string;
-}
-
-interface PlanRow {
-  handle_name: string;
-  platform: string;
-  category: string;
-  followers: string;
-  deliverable_type: string;
-  quantity: number;
-  rate: number;        // cost to agency (from DB)
-  total_cost: number;  // qty × rate (agency cost)
-  client_rate: number; // rate with margin added
-  client_total: number;// qty × client_rate (to quote to client)
-  contact_no?: string;
 }
 
 interface DiscoveryResult {
@@ -173,6 +162,9 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
   const [showMarginModal, setShowMarginModal] = useState(false);
   const [agencyMargin, setAgencyMargin] = useState<number>(30);
   const [pendingMargin, setPendingMargin] = useState("30");
+
+  // Manual plan builder
+  const [showManualBuilder, setShowManualBuilder] = useState(false);
 
   const supabase = createClient();
 
@@ -588,6 +580,12 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
               {discovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               {discovering ? "Discovering…" : "Discovery"}
             </button>
+            <button
+              onClick={() => { if (!brief.brand_name.trim()) { setError("Please enter a brand name first."); return; } setError(""); setShowManualBuilder(true); }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-xl font-medium text-sm hover:bg-teal-700 transition-colors">
+              <LayoutGrid className="w-4 h-4" />
+              Build Media Plan Manually
+            </button>
             {hasContent && (
               <button onClick={approve}
                 className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm hover:bg-emerald-700 transition-colors ml-auto">
@@ -738,6 +736,9 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
                   </span>
                   <button onClick={addRow} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-50">
                     <Plus className="w-3.5 h-3.5" /> Add row
+                  </button>
+                  <button onClick={() => setShowManualBuilder(true)} className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 px-2 py-1 rounded-lg hover:bg-teal-50 border border-teal-200">
+                    <DatabaseZap className="w-3.5 h-3.5" /> Add from Database
                   </button>
                 </>
               )}
@@ -1068,6 +1069,19 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Manual Plan Builder ──────────────────────────────────────────── */}
+      {showManualBuilder && (
+        <ManualPlanBuilder
+          agencyMargin={agencyMargin}
+          onAdd={(rows) => {
+            setPlanRows(prev => [...prev, ...rows]);
+            setShowPlan(true);
+            setShowManualBuilder(false);
+          }}
+          onClose={() => setShowManualBuilder(false)}
+        />
       )}
 
       {/* ── WhatsApp Modal ───────────────────────────────────────────────── */}
