@@ -107,7 +107,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   const payload = {
     brief_id: brief.id,
-    brand_name: brief.brand_name,
     result_rows: updatedRows,
     updated_at: now,
   };
