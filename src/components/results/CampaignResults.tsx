@@ -93,12 +93,25 @@ export default function CampaignResults({ initialBriefId }: Props) {
     if (brief?.media_plan_json) {
       loadOrInitResult(selectedBriefId, brief.media_plan_json);
     }
-    // Fetch submission token for this brief
     supabase.from("client_briefs")
       .select("submission_token")
       .eq("id", selectedBriefId)
       .single()
       .then(({ data }) => setSubmissionToken(data?.submission_token || null));
+
+    // Realtime: reload results whenever a submission updates this campaign
+    const channel = supabase
+      .channel(`campaign-results:${selectedBriefId}`)
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "campaign_results",
+        filter: `brief_id=eq.${selectedBriefId}`,
+      }, () => {
+        const b = briefs.find(br => br.id === selectedBriefId);
+        if (b?.media_plan_json) loadOrInitResult(selectedBriefId, b.media_plan_json);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [selectedBriefId, briefs]);
 
   async function loadOrInitResult(briefId: string, planRows: PlanRow[]) {
@@ -113,12 +126,23 @@ export default function CampaignResults({ initialBriefId }: Props) {
         engagements: r.target_engagements?.toString() || "",
         impressions: r.target_impressions?.toString() || "",
       });
-      // Merge saved result rows with current plan (keep live links and metrics)
-      const savedMap = new Map((r.result_rows || []).map((rr: ResultRow) => [rr.handle_name + rr.platform, rr]));
-      setRows(planRows.map(p => ({
+      const savedRows = r.result_rows || [];
+      const normalise = (s: string) => (s || "").replace(/^@/, "").toLowerCase().trim();
+      const savedMap = new Map(savedRows.map((rr: ResultRow) => [normalise(rr.handle_name) + "|" + (rr.platform || "").toLowerCase(), rr]));
+
+      // Merge plan rows with saved data
+      const mergedPlanRows = planRows.map(p => ({
         ...p,
-        ...(savedMap.get(p.handle_name + p.platform) || {}),
-      })));
+        ...(savedMap.get(normalise(p.handle_name) + "|" + (p.platform || "").toLowerCase()) || {}),
+      }));
+
+      // Include saved rows that are NOT in the media plan (submitted by unknown handles)
+      const planKeys = new Set(planRows.map(p => normalise(p.handle_name) + "|" + (p.platform || "").toLowerCase()));
+      const extraRows = savedRows.filter((rr: ResultRow) =>
+        !planKeys.has(normalise(rr.handle_name) + "|" + (rr.platform || "").toLowerCase())
+      );
+
+      setRows([...mergedPlanRows, ...extraRows]);
     } else {
       setResult(null);
       setTargets({ deliverables: "", views: "", reach: "", engagements: "", impressions: "" });
@@ -648,12 +672,26 @@ ${selectedBrief.campaign_objective ? `
                 <tbody className="divide-y divide-slate-50">
                   {rows.map((row, i) => {
                     const hasLink = row.live_link?.startsWith("http");
+                    const isSubmitted = Boolean(row.submitted_at);
                     const hasFetched = Boolean(row.fetched_at);
                     return (
-                      <tr key={i} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-slate-900">{row.handle_name}</td>
+                      <tr key={i} className={`hover:bg-slate-50 transition-colors ${isSubmitted ? "bg-emerald-50/30" : ""}`}>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-slate-900">{row.handle_name}</div>
+                          {isSubmitted && (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <CheckCircle className="w-3 h-3 text-emerald-500" />
+                              <span className="text-xs text-emerald-600">Submitted</span>
+                              {row.screenshot_url && (
+                                <a href={row.screenshot_url} target="_blank" rel="noreferrer" className="ml-1">
+                                  <img src={row.screenshot_url} alt="screenshot" className="w-6 h-6 rounded object-cover border border-emerald-200 inline" />
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-slate-600 capitalize">{row.platform}</td>
-                        <td className="px-4 py-3 text-slate-600">{row.deliverable_type} × {row.quantity}</td>
+                        <td className="px-4 py-3 text-slate-600">{row.deliverable_type || row.format} {row.quantity ? `× ${row.quantity}` : ""}</td>
                         <td className="px-4 py-3">
                           <input
                             value={row.live_link || ""}
@@ -664,7 +702,9 @@ ${selectedBrief.campaign_objective ? `
                           />
                         </td>
                         <td className="px-4 py-3">
-                          {!hasLink ? (
+                          {isSubmitted ? (
+                            <span className="flex items-center gap-1 text-xs text-emerald-600"><CheckCircle className="w-3 h-3" /> Submitted</span>
+                          ) : !hasLink ? (
                             <span className="flex items-center gap-1 text-xs text-slate-400"><Clock className="w-3 h-3" /> Pending</span>
                           ) : hasFetched ? (
                             <span className="flex items-center gap-1 text-xs text-emerald-600"><CheckCircle className="w-3 h-3" /> Fetched</span>
