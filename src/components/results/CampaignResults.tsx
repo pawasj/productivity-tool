@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase";
 import {
   BarChart3, Link2, RefreshCw, FileDown, Target,
   CheckCircle, AlertCircle, Clock, Loader2, Save,
-  TrendingUp, Eye, Heart, MessageCircle, Share2, Users, Search,
+  TrendingUp, Eye, Heart, MessageCircle, Share2, Users, Search, Copy, Send,
 } from "lucide-react";
 import type { PlanRow, ResultRow } from "@/lib/types";
 
@@ -18,6 +18,7 @@ interface Brief {
   status: string;
   media_plan_json?: PlanRow[];
   created_at: string;
+  submission_token?: string;
 }
 
 interface CampaignResult {
@@ -63,6 +64,8 @@ export default function CampaignResults({ initialBriefId }: Props) {
   const [analysing, setAnalysing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const [submissionToken, setSubmissionToken] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const supabase = createClient();
 
   const filteredBriefs = useMemo(
@@ -84,13 +87,18 @@ export default function CampaignResults({ initialBriefId }: Props) {
 
   // Load selected brief and its result
   useEffect(() => {
-    if (!selectedBriefId) { setSelectedBrief(null); setResult(null); setRows([]); return; }
+    if (!selectedBriefId) { setSelectedBrief(null); setResult(null); setRows([]); setSubmissionToken(null); return; }
     const brief = briefs.find(b => b.id === selectedBriefId) || null;
     setSelectedBrief(brief);
     if (brief?.media_plan_json) {
-      // Initialize result rows from plan
       loadOrInitResult(selectedBriefId, brief.media_plan_json);
     }
+    // Fetch submission token for this brief
+    supabase.from("client_briefs")
+      .select("submission_token")
+      .eq("id", selectedBriefId)
+      .single()
+      .then(({ data }) => setSubmissionToken(data?.submission_token || null));
   }, [selectedBriefId, briefs]);
 
   async function loadOrInitResult(briefId: string, planRows: PlanRow[]) {
@@ -471,6 +479,72 @@ ${selectedBrief.campaign_objective ? `
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+          {/* Creator Submission Link */}
+          {submissionToken && (() => {
+            const submissionUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/submit/${submissionToken}`;
+            const pendingHandles = (selectedBrief?.media_plan_json || []).filter(
+              p => !rows.some(r => r.handle_name?.replace(/^@/, "").toLowerCase() === p.handle_name?.replace(/^@/, "").toLowerCase() && r.submitted_at)
+            );
+            const submittedHandles = (selectedBrief?.media_plan_json || []).filter(
+              p => rows.some(r => r.handle_name?.replace(/^@/, "").toLowerCase() === p.handle_name?.replace(/^@/, "").toLowerCase() && r.submitted_at)
+            );
+            return (
+              <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Send className="w-4 h-4 text-blue-600" />
+                  <h3 className="font-semibold text-slate-900">Creator Submissions</h3>
+                  <span className="text-xs text-slate-400 ml-1">Share this link with page owners to collect analytics</span>
+                </div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 font-mono truncate">
+                    {submissionUrl}
+                  </div>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(submissionUrl); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000); }}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors whitespace-nowrap"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    {linkCopied ? "Copied!" : "Copy Link"}
+                  </button>
+                </div>
+                {(selectedBrief?.media_plan_json?.length || 0) > 0 && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                      <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" /> Pending ({pendingHandles.length})
+                      </p>
+                      {pendingHandles.length === 0
+                        ? <p className="text-xs text-amber-600">All pages submitted!</p>
+                        : <div className="space-y-1">
+                            {pendingHandles.map(p => (
+                              <div key={p.handle_name} className="text-xs text-amber-800 bg-amber-100 rounded px-2 py-1">
+                                {p.handle_name} <span className="text-amber-500">· {p.platform}</span>
+                              </div>
+                            ))}
+                          </div>
+                      }
+                    </div>
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+                      <p className="text-xs font-semibold text-emerald-700 mb-2 flex items-center gap-1">
+                        <CheckCircle className="w-3.5 h-3.5" /> Submitted ({submittedHandles.length})
+                      </p>
+                      {submittedHandles.length === 0
+                        ? <p className="text-xs text-emerald-600">No submissions yet</p>
+                        : <div className="space-y-1">
+                            {submittedHandles.map(p => (
+                              <div key={p.handle_name} className="text-xs text-emerald-800 bg-emerald-100 rounded px-2 py-1">
+                                {p.handle_name} <span className="text-emerald-500">· {p.platform}</span>
+                              </div>
+                            ))}
+                          </div>
+                      }
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Target Metrics */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5">

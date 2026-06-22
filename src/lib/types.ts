@@ -293,6 +293,7 @@ export interface PlanRow {
 
 export interface ResultRow extends PlanRow {
   live_link?: string;
+  format?: string;
   views?: number;
   reach?: number;
   engagement?: number;
@@ -300,6 +301,10 @@ export interface ResultRow extends PlanRow {
   comments?: number;
   shares?: number;
   fetched_at?: string;
+  submitted_at?: string;
+  screenshot_url?: string;
+  fetch_status?: "ok" | "partial" | "unavailable";
+  extra_note?: string;
 }
 
 export interface MediaPlanItem {
