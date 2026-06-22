@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!
+  );
+}
 
 // GET — return campaign info for the public form
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  const supabase = getSupabase();
 
   const { data: brief, error } = await supabase
     .from("client_briefs")
@@ -33,6 +35,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
 // POST — receive creator submission, run Claude Vision, update campaign results
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  const supabase = getSupabase();
   const body = await req.json();
   const { handle_name, live_link, platform, format, screenshot_url } = body;
 
@@ -40,7 +43,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // Look up the brief
   const { data: brief, error: briefErr } = await supabase
     .from("client_briefs")
     .select("id, brand_name, media_plan_json")
@@ -51,10 +53,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   }
 
-  // Run Claude Vision on the screenshot to extract metrics
   const metrics = await extractMetricsFromScreenshot(screenshot_url, platform, format);
 
-  // Load or create the campaign_results record
   const { data: existing } = await supabase
     .from("campaign_results")
     .select("id, result_rows")
@@ -63,19 +63,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   const now = new Date().toISOString();
 
+  const planRow = findPlanRow(brief.media_plan_json, handle_name) || {};
   const newRow = {
-    handle_name,
-    live_link,
-    platform,
-    format,
-    screenshot_url,
-    submitted_at: now,
-    fetch_status: metrics ? "ok" : "partial",
-    fetched_at: now,
+    ...planRow,
     ...metrics,
-    // Preserve media plan fields if this handle exists in the plan
-    ...(findPlanRow(brief.media_plan_json, handle_name) || {}),
-    // Override with submission data (live_link, platform, format take priority)
     handle_name,
     live_link,
     platform,
@@ -83,8 +74,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     screenshot_url,
     submitted_at: now,
     fetched_at: now,
-    fetch_status: metrics ? "ok" as const : "partial" as const,
-    ...metrics,
+    fetch_status: (metrics ? "ok" : "partial") as "ok" | "partial",
   };
 
   let updatedRows: unknown[];
@@ -98,12 +88,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }
     updatedRows = rows;
   } else {
-    // Seed from media plan if exists
     const planRows = ((brief.media_plan_json || []) as Record<string, unknown>[]).map((p) => ({
       ...p,
       ...(normalise(String(p.handle_name)) === normalise(handle_name) ? newRow : {}),
     }));
-    // If not in plan, add directly
     if (!planRows.some(p => normalise(String(p.handle_name)) === normalise(handle_name))) {
       planRows.push(newRow);
     }
@@ -143,13 +131,13 @@ async function extractMetricsFromScreenshot(
   format: string
 ): Promise<Record<string, unknown> | null> {
   try {
-    // Download the image and convert to base64
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) return null;
     const buffer = await imgRes.arrayBuffer();
     const base64 = Buffer.from(buffer).toString("base64");
     const contentType = imgRes.headers.get("content-type") || "image/png";
 
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 600,
@@ -158,7 +146,11 @@ async function extractMetricsFromScreenshot(
         content: [
           {
             type: "image",
-            source: { type: "base64", media_type: contentType as "image/png" | "image/jpeg" | "image/webp" | "image/gif", data: base64 },
+            source: {
+              type: "base64",
+              media_type: contentType as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
+              data: base64,
+            },
           },
           {
             type: "text",
