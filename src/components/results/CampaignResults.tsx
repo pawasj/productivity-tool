@@ -213,6 +213,12 @@ export default function CampaignResults({ initialBriefId }: Props) {
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val ? Number(val) : undefined } : r));
   }
 
+  function deleteRow(idx: number) {
+    const updated = rows.filter((_, i) => i !== idx);
+    setRows(updated);
+    saveResult(updated);
+  }
+
   const totalViews = rows.reduce((s, r) => s + (r.views || 0), 0);
   const totalReach = rows.reduce((s, r) => s + (r.reach || 0), 0);
   const totalEngagement = rows.reduce((s, r) => s + (r.engagement || (r.likes || 0) + (r.comments || 0) + (r.shares || 0)), 0);
@@ -667,6 +673,7 @@ ${selectedBrief.campaign_objective ? `
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-emerald-600 bg-emerald-50">Shares</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-violet-600 bg-violet-50">Engagement</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400">Fetched</th>
+                    <th className="px-4 py-2.5" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -729,6 +736,15 @@ ${selectedBrief.campaign_objective ? `
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-400">
                           {row.fetched_at ? new Date(row.fetched_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => deleteRow(i)}
+                            className="text-slate-300 hover:text-red-500 transition-colors"
+                            title="Delete row"
+                          >
+                            ✕
+                          </button>
                         </td>
                       </tr>
                     );
