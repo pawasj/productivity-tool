@@ -93,87 +93,107 @@ async function fetchReddit(url: string): Promise<Partial<LinkMetrics> | null> {
   }
 }
 
-// ─── Instagram HTML scrape ────────────────────────────────────────────────────
-// Tries multiple methods to get real engagement metrics from public IG posts.
+// ─── Instagram via RapidAPI ───────────────────────────────────────────────────
+// Instagram blocks all direct HTML scraping. RapidAPI scrapers are the only
+// reliable way to get public post metrics without creator OAuth.
+// Set RAPIDAPI_KEY in your Vercel environment variables.
 async function fetchInstagram(url: string): Promise<Partial<LinkMetrics> | null> {
-  try {
-    // Method 1: fetch page HTML and parse Open Graph description + video views
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-      },
-    });
+  const rapidApiKey = process.env.RAPIDAPI_KEY;
 
-    if (res.ok) {
-      const html = await res.text();
+  // Extract shortcode from any IG URL format:
+  // /p/ABC123/, /reel/ABC123/, /tv/ABC123/
+  const shortcodeMatch = url.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
+  const shortcode = shortcodeMatch?.[1];
 
-      // og:description often contains "X Likes, Y Comments"
-      const descMatch = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/i)
-        || html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:description"/i);
-      const desc = descMatch?.[1] || "";
-
-      const likeMatch = desc.match(/([\d,\.]+[KMB]?)\s*(?:Likes?|likes?|❤)/i);
-      const commentMatch = desc.match(/([\d,\.]+[KMB]?)\s*(?:Comments?|comments?)/i);
-
-      // Video view count in various formats
-      const viewMatch = html.match(/"video_view_count"\s*:\s*(\d+)/)
-        || html.match(/"playCount"\s*:\s*(\d+)/)
-        || html.match(/"play_count"\s*:\s*(\d+)/);
-
-      function parseSocial(raw: string): number | undefined {
-        if (!raw) return undefined;
-        const clean = raw.replace(/,/g, "");
-        const m = clean.match(/^([\d.]+)([KMB]?)$/i);
-        if (!m) return undefined;
-        const n = parseFloat(m[1]);
-        const mult = { k: 1e3, m: 1e6, b: 1e9 }[m[2].toLowerCase()] ?? 1;
-        return Math.round(n * mult);
-      }
-
-      const likes = parseSocial(likeMatch?.[1] || "");
-      const comments = parseSocial(commentMatch?.[1] || "");
-      const views = viewMatch ? parseInt(viewMatch[1]) : undefined;
-
-      if (likes || comments || views) {
-        return {
-          likes,
-          comments,
-          views,
-          engagement: (likes || 0) + (comments || 0) || undefined,
-          fetch_status: "ok",
-          extra_note: "Live data scraped from Instagram page",
-        };
-      }
-
-      // Method 2: oEmbed confirmation fallback
-      const oembedRes = await fetch(
-        `https://api.instagram.com/oembed/?url=${encodeURIComponent(url)}&format=json`,
-        { headers: { "User-Agent": "BCC-Media-Analytics/1.0" } }
-      );
-      if (oembedRes.ok) {
-        const odata = await oembedRes.json();
-        if (odata.author_name) {
-          return {
-            fetch_status: "partial",
-            extra_note: `Post confirmed public (@${odata.author_name}). Instagram restricts metric access — enter likes/views manually from your Instagram app or Creator Studio.`,
-          };
-        }
-      }
-    }
-
+  if (!shortcode) {
     return {
       fetch_status: "partial",
-      extra_note: "Instagram post loaded but metrics not accessible publicly. Enter likes, comments and views manually from Instagram app.",
-    };
-  } catch {
-    return {
-      fetch_status: "partial",
-      extra_note: "Could not reach Instagram post. Check the URL and ensure the post is public.",
+      extra_note: "Could not parse Instagram URL. Use a direct post/reel link.",
     };
   }
+
+  if (!rapidApiKey) {
+    return {
+      fetch_status: "partial",
+      extra_note: "RAPIDAPI_KEY not configured. Add it to Vercel env vars to enable automatic Instagram metric fetching. Enter metrics manually for now.",
+    };
+  }
+
+  // Method 1: instagram-scraper-api2 (most reliable for reels + posts)
+  try {
+    const res = await fetch(
+      `https://instagram-scraper-api2.p.rapidapi.com/v1/post_info?code_or_id_or_url=${shortcode}`,
+      {
+        headers: {
+          "x-rapidapi-host": "instagram-scraper-api2.p.rapidapi.com",
+          "x-rapidapi-key": rapidApiKey,
+        },
+      }
+    );
+
+    if (res.ok) {
+      const json = await res.json();
+      const post = json?.data;
+      if (post) {
+        const likes = post.like_count ?? undefined;
+        const comments = post.comment_count ?? undefined;
+        // Reels have play_count, videos have video_view_count
+        const views = post.play_count ?? post.video_view_count ?? undefined;
+        const shares = post.share_count ?? undefined;
+
+        return {
+          views,
+          likes,
+          comments,
+          shares,
+          engagement: ((likes || 0) + (comments || 0) + (shares || 0)) || undefined,
+          fetch_status: "ok",
+          extra_note: `Live data from Instagram (@${post.owner?.username || "creator"})`,
+        };
+      }
+    }
+  } catch {
+    // fall through to method 2
+  }
+
+  // Method 2: instagram230 API (backup)
+  try {
+    const res = await fetch(
+      `https://instagram230.p.rapidapi.com/post/details?shortcode=${shortcode}`,
+      {
+        headers: {
+          "x-rapidapi-host": "instagram230.p.rapidapi.com",
+          "x-rapidapi-key": rapidApiKey,
+        },
+      }
+    );
+
+    if (res.ok) {
+      const json = await res.json();
+      const media = json?.graphql?.shortcode_media || json?.data?.shortcode_media || json;
+      if (media?.edge_media_preview_like || media?.video_view_count) {
+        const likes = media.edge_media_preview_like?.count ?? undefined;
+        const comments = media.edge_media_to_comment?.count ?? undefined;
+        const views = media.video_view_count ?? undefined;
+
+        return {
+          views,
+          likes,
+          comments,
+          engagement: ((likes || 0) + (comments || 0)) || undefined,
+          fetch_status: "ok",
+          extra_note: "Live data from Instagram",
+        };
+      }
+    }
+  } catch {
+    // fall through
+  }
+
+  return {
+    fetch_status: "partial",
+    extra_note: "Instagram API call failed — the post may be private or the API quota may be exceeded. Enter metrics manually.",
+  };
 }
 
 // ─── LinkedIn oEmbed ──────────────────────────────────────────────────────────
