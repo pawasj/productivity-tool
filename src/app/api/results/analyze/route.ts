@@ -275,8 +275,8 @@ export async function POST(req: NextRequest) {
       else if (urlPlatform === "instagram") metrics = await fetchInstagram(row.live_link);
       else if (urlPlatform === "linkedin") metrics = await fetchLinkedIn(row.live_link);
 
-      // 2. If direct fetch got nothing or only partial, try AI search (for non-Instagram platforms)
-      if (!metrics || (metrics.fetch_status === "partial" && urlPlatform !== "instagram" && urlPlatform !== "linkedin")) {
+      // 2. If direct fetch got nothing or only partial, try AI search
+      if (!metrics || (metrics.fetch_status === "partial" && urlPlatform !== "linkedin")) {
         const aiMetrics = await fetchWithAI(row);
         if (aiMetrics) {
           // Merge: prefer direct metrics where available, fill gaps with AI
