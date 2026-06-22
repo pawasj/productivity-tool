@@ -94,105 +94,79 @@ async function fetchReddit(url: string): Promise<Partial<LinkMetrics> | null> {
 }
 
 // ─── Instagram via RapidAPI ───────────────────────────────────────────────────
-// Instagram blocks all direct HTML scraping. RapidAPI scrapers are the only
-// reliable way to get public post metrics without creator OAuth.
-// Set RAPIDAPI_KEY in your Vercel environment variables.
 async function fetchInstagram(url: string): Promise<Partial<LinkMetrics> | null> {
   const rapidApiKey = process.env.RAPIDAPI_KEY;
 
-  // Extract shortcode from any IG URL format:
-  // /p/ABC123/, /reel/ABC123/, /tv/ABC123/
   const shortcodeMatch = url.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
   const shortcode = shortcodeMatch?.[1];
 
   if (!shortcode) {
-    return {
-      fetch_status: "partial",
-      extra_note: "Could not parse Instagram URL. Use a direct post/reel link.",
-    };
+    return { fetch_status: "partial", extra_note: "Could not parse Instagram URL. Use a direct post/reel link." };
   }
 
   if (!rapidApiKey) {
-    return {
-      fetch_status: "partial",
-      extra_note: "RAPIDAPI_KEY not configured. Add it to Vercel env vars to enable automatic Instagram metric fetching. Enter metrics manually for now.",
-    };
+    return { fetch_status: "partial", extra_note: "RAPIDAPI_KEY not configured. Enter metrics manually." };
   }
 
-  // Method 1: instagram-scraper-api2 (most reliable for reels + posts)
+  const HOST = "instagram-scraper-stable-api.p.rapidapi.com";
+  const igHeaders = { "x-rapidapi-host": HOST, "x-rapidapi-key": rapidApiKey };
+
+  // Detect type: reels use type=reel, posts use type=post
+  const isReel = /\/reel\//.test(url);
+  const type = isReel ? "reel" : "post";
+
+  // Method 1: get_media_data.php (Detailed Reel / Post Data)
   try {
     const res = await fetch(
-      `https://instagram-scraper-api2.p.rapidapi.com/v1/post_info?code_or_id_or_url=${shortcode}`,
-      {
-        headers: {
-          "x-rapidapi-host": "instagram-scraper-api2.p.rapidapi.com",
-          "x-rapidapi-key": rapidApiKey,
-        },
-      }
+      `https://${HOST}/get_media_data.php?reel_post_code_or_url=${encodeURIComponent(url)}&type=${type}`,
+      { headers: igHeaders }
     );
-
     if (res.ok) {
       const json = await res.json();
-      const post = json?.data;
-      if (post) {
-        const likes = post.like_count ?? undefined;
-        const comments = post.comment_count ?? undefined;
-        // Reels have play_count, videos have video_view_count
-        const views = post.play_count ?? post.video_view_count ?? undefined;
-        const shares = post.share_count ?? undefined;
-
+      // Response shape varies; flatten common nesting
+      const d = json?.data ?? json?.media ?? json?.result ?? json;
+      if (d && (d.like_count != null || d.play_count != null || d.video_view_count != null)) {
+        const likes = d.like_count ?? undefined;
+        const comments = d.comment_count ?? undefined;
+        const views = d.play_count ?? d.video_view_count ?? d.view_count ?? undefined;
+        const shares = d.share_count ?? undefined;
         return {
-          views,
-          likes,
-          comments,
-          shares,
+          views, likes, comments, shares,
           engagement: ((likes || 0) + (comments || 0) + (shares || 0)) || undefined,
           fetch_status: "ok",
-          extra_note: `Live data from Instagram (@${post.owner?.username || "creator"})`,
+          extra_note: `Live data from Instagram (@${d.owner?.username || d.user?.username || "creator"})`,
         };
       }
     }
-  } catch {
-    // fall through to method 2
-  }
+  } catch { /* fall through */ }
 
-  // Method 2: instagram230 API (backup)
+  // Method 2: get_media_data_v2.php (Detailed Media Data v2) — uses shortcode directly
   try {
     const res = await fetch(
-      `https://instagram230.p.rapidapi.com/post/details?shortcode=${shortcode}`,
-      {
-        headers: {
-          "x-rapidapi-host": "instagram230.p.rapidapi.com",
-          "x-rapidapi-key": rapidApiKey,
-        },
-      }
+      `https://${HOST}/get_media_data_v2.php?media_code=${shortcode}`,
+      { headers: igHeaders }
     );
-
     if (res.ok) {
       const json = await res.json();
-      const media = json?.graphql?.shortcode_media || json?.data?.shortcode_media || json;
-      if (media?.edge_media_preview_like || media?.video_view_count) {
-        const likes = media.edge_media_preview_like?.count ?? undefined;
-        const comments = media.edge_media_to_comment?.count ?? undefined;
-        const views = media.video_view_count ?? undefined;
-
+      const d = json?.data ?? json?.media ?? json?.result ?? json;
+      if (d && (d.like_count != null || d.play_count != null || d.video_view_count != null)) {
+        const likes = d.like_count ?? undefined;
+        const comments = d.comment_count ?? undefined;
+        const views = d.play_count ?? d.video_view_count ?? d.view_count ?? undefined;
+        const shares = d.share_count ?? undefined;
         return {
-          views,
-          likes,
-          comments,
-          engagement: ((likes || 0) + (comments || 0)) || undefined,
+          views, likes, comments, shares,
+          engagement: ((likes || 0) + (comments || 0) + (shares || 0)) || undefined,
           fetch_status: "ok",
-          extra_note: "Live data from Instagram",
+          extra_note: `Live data from Instagram (@${d.owner?.username || d.user?.username || "creator"})`,
         };
       }
     }
-  } catch {
-    // fall through
-  }
+  } catch { /* fall through */ }
 
   return {
     fetch_status: "partial",
-    extra_note: "Instagram API call failed — the post may be private or the API quota may be exceeded. Enter metrics manually.",
+    extra_note: "Instagram metrics unavailable — post may be private or API quota exceeded. Enter manually.",
   };
 }
 
