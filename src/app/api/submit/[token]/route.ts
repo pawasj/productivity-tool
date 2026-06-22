@@ -112,10 +112,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     updated_at: now,
   };
 
+  let saveError: string | null = null;
   if (existing) {
-    await supabase.from("campaign_results").update(payload).eq("id", existing.id);
+    const { error } = await supabase.from("campaign_results").update(payload).eq("id", existing.id);
+    if (error) saveError = `update failed: ${error.message}`;
   } else {
-    await supabase.from("campaign_results").insert(payload);
+    const { error } = await supabase.from("campaign_results").insert(payload);
+    if (error) saveError = `insert failed: ${error.message}`;
+  }
+
+  if (saveError) {
+    return NextResponse.json({ error: saveError }, { status: 500 });
   }
 
   return NextResponse.json({ success: true, metrics });
