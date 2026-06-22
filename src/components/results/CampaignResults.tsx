@@ -673,7 +673,6 @@ ${selectedBrief.campaign_objective ? `
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-emerald-600 bg-emerald-50">Shares</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-violet-600 bg-violet-50">Engagement</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400">Fetched</th>
-                    <th className="px-4 py-2.5" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -735,16 +734,14 @@ ${selectedBrief.campaign_objective ? `
                           {fmtNum(row.engagement || (row.likes || 0) + (row.comments || 0) + (row.shares || 0) || undefined)}
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-400">
-                          {row.fetched_at ? new Date(row.fetched_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => deleteRow(i)}
-                            className="text-slate-300 hover:text-red-500 transition-colors"
-                            title="Delete row"
-                          >
-                            ✕
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <span>{row.fetched_at ? new Date(row.fetched_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}</span>
+                            <button
+                              onClick={() => deleteRow(i)}
+                              className="ml-1 text-slate-300 hover:text-red-500 transition-colors font-bold text-sm"
+                              title="Delete row"
+                            >✕</button>
+                          </div>
                         </td>
                       </tr>
                     );
