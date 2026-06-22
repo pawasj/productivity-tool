@@ -36,8 +36,8 @@ export default function SubmitPage({ params }: { params: Promise<{ token: string
   const [liveLink, setLiveLink] = useState("");
   const [platform, setPlatform] = useState("Instagram");
   const [format, setFormat] = useState("Reel");
-  const [screenshot, setScreenshot] = useState<File | null>(null);
-  const [screenshotPreview, setScreenshotPreview] = useState("");
+  const [screenshots, setScreenshots] = useState<File[]>([]);
+  const [screenshotPreviews, setScreenshotPreviews] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
 
   const supabase = createBrowserClient(
@@ -59,31 +59,37 @@ export default function SubmitPage({ params }: { params: Promise<{ token: string
     });
   }, []);
 
-  function handleFile(file: File) {
-    setScreenshot(file);
-    setScreenshotPreview(URL.createObjectURL(file));
+  function addFiles(files: FileList | File[]) {
+    const arr = Array.from(files).filter(f => f.type.startsWith("image/"));
+    setScreenshots(prev => [...prev, ...arr]);
+    setScreenshotPreviews(prev => [...prev, ...arr.map(f => URL.createObjectURL(f))]);
+  }
+
+  function removeScreenshot(idx: number) {
+    setScreenshots(prev => prev.filter((_, i) => i !== idx));
+    setScreenshotPreviews(prev => prev.filter((_, i) => i !== idx));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!screenshot) { alert("Please upload a screenshot of your analytics."); return; }
+    if (!screenshots.length) { alert("Please upload at least one analytics screenshot."); return; }
     if (!liveLink.startsWith("http")) { alert("Live link must start with http/https."); return; }
     setSubmitting(true);
 
     try {
-      // Upload screenshot to Supabase storage
-      const ext = screenshot.name.split(".").pop() || "png";
-      const path = `submissions/${token}/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("campaign-screenshots")
-        .upload(path, screenshot, { contentType: screenshot.type });
-      if (upErr) throw new Error("Screenshot upload failed: " + upErr.message);
+      // Upload all screenshots
+      const uploadedUrls: string[] = [];
+      for (const file of screenshots) {
+        const ext = file.name.split(".").pop() || "png";
+        const path = `submissions/${token}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("campaign-screenshots")
+          .upload(path, file, { contentType: file.type });
+        if (upErr) throw new Error("Screenshot upload failed: " + upErr.message);
+        const { data: urlData } = supabase.storage.from("campaign-screenshots").getPublicUrl(path);
+        uploadedUrls.push(urlData.publicUrl);
+      }
 
-      const { data: urlData } = supabase.storage
-        .from("campaign-screenshots")
-        .getPublicUrl(path);
-
-      // Submit to API
       const res = await fetch(`/api/submit/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,7 +98,7 @@ export default function SubmitPage({ params }: { params: Promise<{ token: string
           live_link: liveLink,
           platform,
           format,
-          screenshot_url: urlData.publicUrl,
+          screenshot_urls: uploadedUrls,
         }),
       });
       const json = await res.json();
@@ -201,33 +207,59 @@ export default function SubmitPage({ params }: { params: Promise<{ token: string
 
           {/* Screenshot upload */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Analytics Screenshot <span className="text-red-500">*</span></label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Analytics Screenshots <span className="text-red-500">*</span>
+              <span className="text-xs font-normal text-slate-400 ml-1">— upload as many as needed (views, reach, likes, etc.)</span>
+            </label>
+
+            {/* Drop zone */}
             <div
               onDragOver={e => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+              onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}
               onClick={() => document.getElementById("screenshot-input")?.click()}
-              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${dragOver ? "border-blue-400 bg-blue-50" : "border-slate-300 hover:border-blue-400 hover:bg-slate-50"}`}
+              className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${dragOver ? "border-blue-400 bg-blue-50" : "border-slate-300 hover:border-blue-400 hover:bg-slate-50"}`}
             >
-              {screenshotPreview ? (
-                <img src={screenshotPreview} alt="preview" className="max-h-48 mx-auto rounded-lg object-contain" />
-              ) : (
-                <>
-                  <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                  <p className="text-sm text-slate-500">Drag & drop or click to upload</p>
-                  <p className="text-xs text-slate-400 mt-1">PNG, JPG, WEBP supported</p>
-                </>
-              )}
+              <Upload className="w-7 h-7 text-slate-400 mx-auto mb-1.5" />
+              <p className="text-sm text-slate-500">Drag & drop or click to upload</p>
+              <p className="text-xs text-slate-400 mt-0.5">PNG, JPG, WEBP · multiple files allowed</p>
             </div>
             <input
               id="screenshot-input"
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+              onChange={e => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = ""; }}
             />
-            {screenshot && (
-              <p className="text-xs text-green-600 mt-1">✓ {screenshot.name}</p>
+
+            {/* Previews grid */}
+            {screenshotPreviews.length > 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {screenshotPreviews.map((src, i) => (
+                  <div key={i} className="relative group rounded-lg overflow-hidden border border-slate-200">
+                    <img src={src} alt={`screenshot ${i + 1}`} className="w-full h-32 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeScreenshot(i)}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >✕</button>
+                    <p className="text-xs text-slate-500 px-2 py-1 truncate">{screenshots[i]?.name}</p>
+                  </div>
+                ))}
+                {/* Add more button */}
+                <div
+                  onClick={() => document.getElementById("screenshot-input")?.click()}
+                  className="border-2 border-dashed border-slate-200 rounded-lg h-32 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-slate-50 transition-colors"
+                >
+                  <Upload className="w-5 h-5 text-slate-300 mb-1" />
+                  <p className="text-xs text-slate-400">Add more</p>
+                </div>
+              </div>
+            )}
+
+            {screenshots.length > 0 && (
+              <p className="text-xs text-green-600 mt-1.5">✓ {screenshots.length} screenshot{screenshots.length > 1 ? "s" : ""} ready</p>
             )}
           </div>
 

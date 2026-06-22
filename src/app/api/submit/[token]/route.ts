@@ -37,9 +37,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   const { token } = await params;
   const supabase = getSupabase();
   const body = await req.json();
-  const { handle_name, live_link, platform, format, screenshot_url } = body;
+  const { handle_name, live_link, platform, format, screenshot_urls } = body;
+  // support both single and array
+  const urls: string[] = Array.isArray(screenshot_urls)
+    ? screenshot_urls
+    : body.screenshot_url ? [body.screenshot_url] : [];
 
-  if (!handle_name || !live_link || !screenshot_url) {
+  if (!handle_name || !live_link || !urls.length) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
@@ -53,7 +57,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   }
 
-  const metrics = await extractMetricsFromScreenshot(screenshot_url, platform, format);
+  // Extract metrics from all screenshots and merge (take max for each metric)
+  const allMetrics = await Promise.all(urls.map(u => extractMetricsFromScreenshot(u, platform, format)));
+  const metrics = mergeMetrics(allMetrics);
 
   const { data: existing } = await supabase
     .from("campaign_results")
@@ -71,7 +77,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     live_link,
     platform,
     format,
-    screenshot_url,
+    screenshot_url: urls[0],
+    screenshot_urls: urls,
     submitted_at: now,
     fetched_at: now,
     fetch_status: (metrics ? "ok" : "partial") as "ok" | "partial",
@@ -123,6 +130,21 @@ function findPlanRow(plan: unknown, handleName: string): Record<string, unknown>
   return (plan as Record<string, unknown>[]).find(
     p => normalise(String(p.handle_name)) === normalise(handleName)
   ) || null;
+}
+
+// Merge metrics from multiple screenshots — take the highest value for each metric
+function mergeMetrics(all: (Record<string, unknown> | null)[]): Record<string, unknown> | null {
+  const valid = all.filter(Boolean) as Record<string, unknown>[];
+  if (!valid.length) return null;
+  const numKeys = ["views", "reach", "likes", "comments", "shares", "engagement"] as const;
+  const merged: Record<string, unknown> = {};
+  for (const key of numKeys) {
+    const vals = valid.map(m => m[key]).filter((v): v is number => typeof v === "number");
+    if (vals.length) merged[key] = Math.max(...vals);
+  }
+  const notes = valid.map(m => m.extra_note).filter(Boolean);
+  if (notes.length) merged.extra_note = notes.join(" | ");
+  return Object.keys(merged).length ? merged : null;
 }
 
 async function extractMetricsFromScreenshot(
