@@ -24,22 +24,35 @@ export async function GET(req: NextRequest) {
     "Content-Type": "application/json",
   };
 
-  // Try every plausible path + method combination including POST bodies
+  // Targeting the actual endpoint names seen on RapidAPI:
+  // "Detailed Reel Data", "Detailed Post Data", "Detailed Media Data v2", "Get Media Code or ID"
   const attempts = [
-    { name: "GET_root",              method: "GET",  url: `https://${HOST}/` },
-    { name: "GET_fetch",             method: "GET",  url: `https://${HOST}/fetch?url=${encodeURIComponent(url)}` },
-    { name: "GET_info",              method: "GET",  url: `https://${HOST}/info?url=${encodeURIComponent(url)}` },
-    { name: "GET_reel_info",         method: "GET",  url: `https://${HOST}/reel/info?shortcode=${shortcode}` },
-    { name: "GET_reels",             method: "GET",  url: `https://${HOST}/reels?shortcode=${shortcode}` },
-    { name: "GET_instagram",         method: "GET",  url: `https://${HOST}/instagram?url=${encodeURIComponent(url)}` },
-    { name: "GET_media_details",     method: "GET",  url: `https://${HOST}/media-details?shortcode=${shortcode}` },
-    { name: "GET_shortcode",         method: "GET",  url: `https://${HOST}/${shortcode}` },
-    { name: "POST_url_body",         method: "POST", url: `https://${HOST}/`, body: JSON.stringify({ url }) },
-    { name: "POST_scrape",           method: "POST", url: `https://${HOST}/scrape`, body: JSON.stringify({ url }) },
-    { name: "POST_fetch",            method: "POST", url: `https://${HOST}/fetch`, body: JSON.stringify({ url, shortcode }) },
-    { name: "POST_media",            method: "POST", url: `https://${HOST}/media`, body: JSON.stringify({ shortcode }) },
-    { name: "GET_no_host_override",  method: "GET",  url: `https://${HOST}/post_info?shortcode=${shortcode}` },
-    { name: "GET_reel_shortcode",    method: "GET",  url: `https://${HOST}/reel_info?shortcode=${shortcode}` },
+    // Reel-specific paths
+    { name: "GET_reel_shortcode_param",   method: "GET", url: `https://${HOST}/reel?shortcode=${shortcode}` },
+    { name: "GET_reel_data",              method: "GET", url: `https://${HOST}/reel/data?shortcode=${shortcode}` },
+    { name: "GET_reels_shortcode",        method: "GET", url: `https://${HOST}/reels/data?shortcode=${shortcode}` },
+    // Post-specific paths
+    { name: "GET_post_shortcode",         method: "GET", url: `https://${HOST}/post?shortcode=${shortcode}` },
+    { name: "GET_post_data",              method: "GET", url: `https://${HOST}/post/data?shortcode=${shortcode}` },
+    // Media paths (v1 and v2)
+    { name: "GET_media_v1",              method: "GET", url: `https://${HOST}/media?shortcode=${shortcode}` },
+    { name: "GET_media_v2",              method: "GET", url: `https://${HOST}/v2/media?shortcode=${shortcode}` },
+    { name: "GET_v1_media",              method: "GET", url: `https://${HOST}/v1/media?shortcode=${shortcode}` },
+    { name: "GET_v2_media_url",          method: "GET", url: `https://${HOST}/v2/media?url=${encodeURIComponent(url)}` },
+    // "Get Media Code or ID" — likely a utility endpoint
+    { name: "GET_media_code",            method: "GET", url: `https://${HOST}/media/code?url=${encodeURIComponent(url)}` },
+    { name: "GET_media_id",              method: "GET", url: `https://${HOST}/media/id?shortcode=${shortcode}` },
+    // Detailed variants
+    { name: "GET_detailed_post",         method: "GET", url: `https://${HOST}/detailed-post?shortcode=${shortcode}` },
+    { name: "GET_detailed_reel",         method: "GET", url: `https://${HOST}/detailed-reel?shortcode=${shortcode}` },
+    { name: "GET_detailed_media",        method: "GET", url: `https://${HOST}/detailed-media?shortcode=${shortcode}` },
+    // URL-based variants
+    { name: "GET_post_url",              method: "GET", url: `https://${HOST}/post?url=${encodeURIComponent(url)}` },
+    { name: "GET_reel_url",              method: "GET", url: `https://${HOST}/reel?url=${encodeURIComponent(url)}` },
+    { name: "GET_media_url",             method: "GET", url: `https://${HOST}/media?url=${encodeURIComponent(url)}` },
+    // code_or_id param style (used by scraper-api2)
+    { name: "GET_code_or_id",           method: "GET", url: `https://${HOST}/post_info?code_or_id_or_url=${shortcode}` },
+    { name: "GET_v1_post_info_code",    method: "GET", url: `https://${HOST}/v1/post_info?code_or_id_or_url=${shortcode}` },
   ];
 
   for (const attempt of attempts) {
@@ -47,7 +60,7 @@ export async function GET(req: NextRequest) {
       const res = await fetch(attempt.url, {
         method: attempt.method,
         headers,
-        ...(attempt.body ? { body: attempt.body } : {}),
+        ...(attempt.body ? { body: (attempt as {body?: string}).body } : {}),
       });
       const body = await res.text();
       debug[attempt.name] = {
