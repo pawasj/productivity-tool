@@ -16,99 +16,45 @@ export async function GET(req: NextRequest) {
     rapidapi_key_prefix: rapidApiKey ? rapidApiKey.slice(0, 8) + "..." : null,
   };
 
-  if (!rapidApiKey) {
-    return NextResponse.json({ ...debug, error: "RAPIDAPI_KEY env var not set" });
+  if (!rapidApiKey || !shortcode) {
+    return NextResponse.json({ ...debug, error: !rapidApiKey ? "No key" : "No shortcode" });
   }
 
-  if (!shortcode) {
-    return NextResponse.json({ ...debug, error: "Could not extract shortcode from URL" });
-  }
+  const HOST = "instagram-scraper-stable-api.p.rapidapi.com";
+  const headers = {
+    "x-rapidapi-host": HOST,
+    "x-rapidapi-key": rapidApiKey,
+  };
 
-  // Test API 1: instagram-scraper-api2
-  try {
-    const res1 = await fetch(
-      `https://instagram-scraper-api2.p.rapidapi.com/v1/post_info?code_or_id_or_url=${shortcode}`,
-      {
-        headers: {
-          "x-rapidapi-host": "instagram-scraper-api2.p.rapidapi.com",
-          "x-rapidapi-key": rapidApiKey,
-        },
-      }
-    );
-    const body1 = await res1.text();
-    debug["api1_instagram_scraper_api2"] = {
-      status: res1.status,
-      ok: res1.ok,
-      body: body1.slice(0, 2000),
-    };
-  } catch (e) {
-    debug["api1_instagram_scraper_api2"] = { error: String(e) };
-  }
+  // Try every common endpoint pattern this API might expose
+  const attempts = [
+    { name: "get_post_by_shortcode",  method: "GET",  url: `https://${HOST}/v1/post_info?shortcode=${shortcode}` },
+    { name: "get_post_by_url",        method: "GET",  url: `https://${HOST}/v1/post_info?url=${encodeURIComponent(url)}` },
+    { name: "media_info_shortcode",   method: "GET",  url: `https://${HOST}/media/info?shortcode=${shortcode}` },
+    { name: "media_by_url",           method: "GET",  url: `https://${HOST}/media?url=${encodeURIComponent(url)}` },
+    { name: "reel_by_shortcode",      method: "GET",  url: `https://${HOST}/reel?shortcode=${shortcode}` },
+    { name: "post_by_shortcode",      method: "GET",  url: `https://${HOST}/post?shortcode=${shortcode}` },
+    { name: "post_by_url_param",      method: "GET",  url: `https://${HOST}/post?url=${encodeURIComponent(url)}` },
+    { name: "get_media",              method: "GET",  url: `https://${HOST}/get_media?shortcode=${shortcode}` },
+    { name: "v2_post_info",           method: "GET",  url: `https://${HOST}/v2/post_info?shortcode=${shortcode}` },
+    { name: "scrape_post",            method: "GET",  url: `https://${HOST}/scrape?url=${encodeURIComponent(url)}` },
+  ];
 
-  // Test API 2: instagram230
-  try {
-    const res2 = await fetch(
-      `https://instagram230.p.rapidapi.com/post/details?shortcode=${shortcode}`,
-      {
-        headers: {
-          "x-rapidapi-host": "instagram230.p.rapidapi.com",
-          "x-rapidapi-key": rapidApiKey,
-        },
-      }
-    );
-    const body2 = await res2.text();
-    debug["api2_instagram230"] = {
-      status: res2.status,
-      ok: res2.ok,
-      body: body2.slice(0, 2000),
-    };
-  } catch (e) {
-    debug["api2_instagram230"] = { error: String(e) };
-  }
-
-  // Test API 3: instagram-bulk-profile-scrapper
-  try {
-    const res3 = await fetch(
-      `https://instagram-bulk-profile-scrapper.p.rapidapi.com/ig/post_info/?shortcode=${shortcode}`,
-      {
-        headers: {
-          "x-rapidapi-host": "instagram-bulk-profile-scrapper.p.rapidapi.com",
-          "x-rapidapi-key": rapidApiKey,
-        },
-      }
-    );
-    const body3 = await res3.text();
-    debug["api3_bulk_scrapper"] = {
-      status: res3.status,
-      ok: res3.ok,
-      body: body3.slice(0, 2000),
-    };
-  } catch (e) {
-    debug["api3_bulk_scrapper"] = { error: String(e) };
-  }
-
-  // Test API 4: rocketapi-for-instagram
-  try {
-    const res4 = await fetch(
-      "https://rocketapi-for-instagram.p.rapidapi.com/instagram/media/get_info",
-      {
-        method: "POST",
-        headers: {
-          "x-rapidapi-host": "rocketapi-for-instagram.p.rapidapi.com",
-          "x-rapidapi-key": rapidApiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id: shortcode }),
-      }
-    );
-    const body4 = await res4.text();
-    debug["api4_rocketapi"] = {
-      status: res4.status,
-      ok: res4.ok,
-      body: body4.slice(0, 2000),
-    };
-  } catch (e) {
-    debug["api4_rocketapi"] = { error: String(e) };
+  for (const attempt of attempts) {
+    try {
+      const res = await fetch(attempt.url, { method: attempt.method, headers });
+      const body = await res.text();
+      debug[attempt.name] = {
+        status: res.status,
+        ok: res.ok,
+        url: attempt.url,
+        body: body.slice(0, 1500),
+      };
+      // Stop at first success so we can clearly see the working endpoint + shape
+      if (res.ok) break;
+    } catch (e) {
+      debug[attempt.name] = { error: String(e) };
+    }
   }
 
   return NextResponse.json(debug, { status: 200 });
