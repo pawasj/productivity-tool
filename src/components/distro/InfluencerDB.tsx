@@ -82,6 +82,8 @@ export function InfluencerTable({ subtype }: Props) {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importMode, setImportMode] = useState<"add" | "replace" | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
   const categories = subtype === "creator" ? CREATOR_CATEGORIES : PAGE_CATEGORIES;
@@ -117,11 +119,24 @@ export function InfluencerTable({ subtype }: Props) {
 
   async function handleCSV(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
-    setImporting(true); setImportMsg("");
+    const mode = importMode;
+    setImporting(true); setImportMsg(""); setShowImportModal(false); setImportMode(null);
     Papa.parse(file, {
       header: true, skipEmptyLines: true,
       complete: async (res) => {
         const rows = res.data as Record<string, string>[];
+
+        // Replace All: delete every existing row for this subtype first
+        if (mode === "replace") {
+          const { data: existing } = await supabase
+            .from("influencers")
+            .select("id")
+            .eq("influencer_type", subtype);
+          if (existing?.length) {
+            await supabase.from("influencers").delete().eq("influencer_type", subtype);
+          }
+        }
+
         let added = 0, updated = 0;
         for (const row of rows) {
           const handle = (row["Handle Name"] || row["handle_name"] || row["Handle"] || "").trim();
@@ -145,11 +160,18 @@ export function InfluencerTable({ subtype }: Props) {
             state: row["State"] || row["state"] || "",
             influencer_type: subtype,
           };
-          const { data: ex } = await supabase.from("influencers").select("id").eq("handle_name", record.handle_name).eq("platform", platform).single();
-          if (ex) { await supabase.from("influencers").update(record).eq("id", ex.id); updated++; }
-          else { await supabase.from("influencers").insert(record); added++; }
+          if (mode === "replace") {
+            await supabase.from("influencers").insert(record);
+            added++;
+          } else {
+            const { data: ex } = await supabase.from("influencers").select("id").eq("handle_name", record.handle_name).eq("platform", platform).single();
+            if (ex) { await supabase.from("influencers").update(record).eq("id", ex.id); updated++; }
+            else { await supabase.from("influencers").insert(record); added++; }
+          }
         }
-        setImportMsg(`✓ ${added} added, ${updated} updated`);
+        setImportMsg(mode === "replace"
+          ? `✓ Database replaced — ${added} entries imported`
+          : `✓ ${added} added, ${updated} updated`);
         setImporting(false);
         load();
         if (fileRef.current) fileRef.current.value = "";
@@ -212,7 +234,7 @@ export function InfluencerTable({ subtype }: Props) {
           {allStates.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleCSV} />
-        <button onClick={() => fileRef.current?.click()} disabled={importing}
+        <button onClick={() => setShowImportModal(true)} disabled={importing}
           className="flex items-center gap-2 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-60">
           {importing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
           Import CSV
@@ -374,6 +396,33 @@ export function InfluencerTable({ subtype }: Props) {
                 {saving ? "Saving…" : <><Check className="w-3.5 h-3.5" /> Save</>}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import mode modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-1">Import CSV</h3>
+            <p className="text-sm text-slate-500 mb-5">How should this CSV be imported?</p>
+            <div className="space-y-3 mb-6">
+              <button
+                onClick={() => { setImportMode("add"); setShowImportModal(false); fileRef.current?.click(); }}
+                className="w-full text-left px-4 py-3 border-2 border-slate-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-colors group"
+              >
+                <p className="font-semibold text-slate-800 group-hover:text-blue-700">Add New</p>
+                <p className="text-xs text-slate-500 mt-0.5">Add entries from the CSV to the existing database. Existing entries with the same handle will be updated with new rates. Nothing else is deleted.</p>
+              </button>
+              <button
+                onClick={() => { setImportMode("replace"); setShowImportModal(false); fileRef.current?.click(); }}
+                className="w-full text-left px-4 py-3 border-2 border-slate-200 rounded-xl hover:border-red-400 hover:bg-red-50 transition-colors group"
+              >
+                <p className="font-semibold text-slate-800 group-hover:text-red-700">Replace All</p>
+                <p className="text-xs text-slate-500 mt-0.5">Delete the entire existing database for this tab and replace it completely with the CSV. This cannot be undone.</p>
+              </button>
+            </div>
+            <button onClick={() => setShowImportModal(false)} className="w-full text-sm text-slate-500 hover:text-slate-700">Cancel</button>
           </div>
         </div>
       )}
