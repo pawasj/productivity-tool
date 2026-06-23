@@ -37,11 +37,26 @@ function buildPlatformSearchPlan(platforms: string[], brief: Record<string, stri
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { brief, platforms = ["instagram", "youtube", "linkedin"], geos = [], languages = [] } = body;
+    const { brief, platforms = ["instagram", "youtube", "linkedin"], geos = [], languages = [], segments = ["nano", "micro", "macro"] } = body;
     if (!brief?.brand_name) return NextResponse.json({ error: "brand_name required" }, { status: 400 });
 
     const geo = (geos as string[]).join(", ");
     const language = (languages as string[]).join(", ");
+
+    // Build follower range constraint from selected segments
+    const segmentDefs: Record<string, { label: string; range: string; min: number; max: number | null }> = {
+      nano:  { label: "Nano",  range: "5K–25K followers",   min: 5000,   max: 25000 },
+      micro: { label: "Micro", range: "25K–2L followers",   min: 25000,  max: 200000 },
+      macro: { label: "Macro", range: "above 2L followers", min: 200000, max: null },
+    };
+    const selectedSegments = (segments as string[]).filter(s => segmentDefs[s]);
+    const segmentLabel = selectedSegments.map(s => `${segmentDefs[s].label} (${segmentDefs[s].range})`).join(", ");
+    const segmentConstraint = selectedSegments.length > 0 && selectedSegments.length < 3
+      ? `\n═══ FOLLOWER SIZE FILTER — MANDATORY ═══
+ONLY return creators/pages within these follower tiers: ${segmentLabel}
+Do NOT include accounts outside these ranges. If unsure of follower count, only include if they are likely within the specified range based on available data.
+═══════════════════════════════════════`
+      : "";
     const contentType = brief.content_type || "both";
     const geography = brief.target_geography || "India";
     const isRegional = !!(geo || language);
@@ -108,6 +123,7 @@ Deliverables: ${brief.deliverables || "Not specified"}
 Additional Notes: ${brief.additional_notes || "None"}
 ${nicheContext}
 ${regionalConstraint}
+${segmentConstraint}
 
 ═══ PLATFORMS TO SEARCH ═══
 ${platformList}
@@ -137,7 +153,7 @@ For EACH selected platform, run 2–3 targeted web searches. ${isRegional ? `ALW
 
 IMPORTANT RULES:
 1. Only include accounts you have VERIFIED through search results — never fabricate handles
-2. ${isRegional ? `STRICT: Every result MUST satisfy the ${geo ? `"${geo}" geography` : `"${language}" language`} filter — no exceptions` : "Include a mix of mega (1M+), macro (100K–1M), and micro (10K–100K) accounts"}
+2. ${isRegional ? `STRICT: Every result MUST satisfy the ${geo ? `"${geo}" geography` : `"${language}" language`} filter — no exceptions` : selectedSegments.length < 3 ? `STRICT: Only include accounts within these follower tiers: ${segmentLabel} — no exceptions` : "Include a mix of nano (5K–25K), micro (25K–2L), and macro (2L+) accounts"}
 3. For each result, include the EXACT profile URL
 4. Engagement rate matters more than raw follower count
 5. ${contentType === "pages" ? "Focus on PAGES and COMMUNITIES, not individual people." : contentType === "creators" ? "Focus on INDIVIDUAL content creators, not brand pages." : "Include a healthy mix of creators and community pages."}

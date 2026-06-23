@@ -158,6 +158,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
   const [discoveryContentType, setDiscoveryContentType] = useState<"creators" | "pages" | "both">("both");
   const [discoveryGeos, setDiscoveryGeos] = useState<string[]>([]);
   const [discoveryLanguages, setDiscoveryLanguages] = useState<string[]>([]);
+  const [discoverySegments, setDiscoverySegments] = useState<string[]>(["nano", "micro", "macro"]);
   const [discoveryGeoMode, setDiscoveryGeoMode] = useState<"state" | "language">("state");
 
   // Margin modal state
@@ -332,6 +333,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
   async function runDiscovery() {
     if (!brief.brand_name.trim()) { setError("Please enter a brand name before discovering."); return; }
     if (discoveryPlatforms.length === 0) { setError("Select at least one platform."); return; }
+    if (discoverySegments.length === 0) { setError("Select at least one creator size segment."); return; }
     setError(""); setDiscovering(true); setShowDiscovery(true); setShowDiscoveryModal(false);
     try {
       const res = await fetch("/api/distro/discover", {
@@ -342,6 +344,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
           platforms: discoveryPlatforms,
           geos: discoveryGeos,
           languages: discoveryLanguages,
+          segments: discoverySegments,
         }),
       });
       const json = await res.json();
@@ -1023,6 +1026,40 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                 )}
               </div>
 
+              {/* Creator / Page Size Segments */}
+              <div>
+                <p className="text-sm font-medium text-slate-700 mb-2">Creator / Page Size</p>
+                <p className="text-xs text-slate-400 mb-3">Select which follower tiers to include (multi-select)</p>
+                <div className="space-y-2">
+                  {[
+                    { id: "nano",  label: "Nano",  range: "5K – 25K followers",   color: "blue" },
+                    { id: "micro", label: "Micro", range: "25K – 2L followers",    color: "amber" },
+                    { id: "macro", label: "Macro", range: "Above 2L followers",    color: "violet" },
+                  ].map(seg => {
+                    const checked = discoverySegments.includes(seg.id);
+                    return (
+                      <label key={seg.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 cursor-pointer transition-all ${checked ? `border-${seg.color}-400 bg-${seg.color}-50` : "border-slate-200 hover:border-slate-300"}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setDiscoverySegments(prev =>
+                            prev.includes(seg.id) ? prev.filter(s => s !== seg.id) : [...prev, seg.id]
+                          )}
+                          className={`w-4 h-4 accent-${seg.color}-500`}
+                        />
+                        <div>
+                          <p className={`text-sm font-semibold ${checked ? `text-${seg.color}-700` : "text-slate-700"}`}>{seg.label}</p>
+                          <p className="text-xs text-slate-400">{seg.range}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                {discoverySegments.length === 0 && (
+                  <p className="text-xs text-rose-600 bg-rose-50 px-3 py-2 rounded-lg mt-2">Select at least one size segment.</p>
+                )}
+              </div>
+
               {discoveryPlatforms.length === 0 && (
                 <p className="text-xs text-rose-600 bg-rose-50 px-3 py-2 rounded-lg">Select at least one platform to search.</p>
               )}
@@ -1030,7 +1067,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
 
             <div className="flex gap-3 p-5 border-t border-slate-100 sticky bottom-0 bg-white">
               <button onClick={() => setShowDiscoveryModal(false)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-              <button onClick={runDiscovery} disabled={discoveryPlatforms.length === 0}
+              <button onClick={runDiscovery} disabled={discoveryPlatforms.length === 0 || discoverySegments.length === 0}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors">
                 <Search className="w-4 h-4" />
                 {(discoveryGeos.length > 0 || discoveryLanguages.length > 0)
