@@ -102,7 +102,44 @@ Return ONLY valid JSON — no markdown fences, no explanation outside JSON:
     if (!jsonMatch) throw new Error("Claude did not return valid JSON");
     const parsed = JSON.parse(jsonMatch[0]);
 
-    return NextResponse.json({ plan: parsed.plan || [], usedFallback: !hasDB });
+    // Build a fast lookup: handle_name → influencer DB row
+    const dbMap = new Map<string, Record<string, unknown>>();
+    for (const inf of (influencers as Record<string, unknown>[])) {
+      const key = String(inf.handle_name || "").replace(/^@/, "").toLowerCase().trim();
+      dbMap.set(key, inf);
+    }
+
+    // Overwrite rates directly from the DB — no hallucination possible
+    const plan = (parsed.plan || []).map((row: Record<string, unknown>) => {
+      const key = String(row.handle_name || "").replace(/^@/, "").toLowerCase().trim();
+      const dbRow = dbMap.get(key);
+      if (!dbRow) return row; // unknown handle, keep as-is
+
+      const deliverable = String(row.deliverable_type || "").toLowerCase();
+      let exactRate: number | null = null;
+
+      if (deliverable.includes("reel"))         exactRate = Number(dbRow.rate_reel)        || null;
+      else if (deliverable.includes("story"))   exactRate = Number(dbRow.rate_story)       || null;
+      else if (deliverable.includes("collab"))  exactRate = Number(dbRow.rate_collab_post) || null;
+      else if (deliverable.includes("carousel"))exactRate = Number(dbRow.rate_carousel)    || null;
+      else if (deliverable.includes("combo"))   exactRate = Number(dbRow.rate_combo)       || null;
+      else if (deliverable.includes("post"))    exactRate = Number(dbRow.rate_post)        || null;
+      // fallback: first non-zero rate in order of preference
+      else exactRate =
+        Number(dbRow.rate_reel) ||
+        Number(dbRow.rate_post) ||
+        Number(dbRow.rate_story) ||
+        Number(dbRow.rate_collab_post) ||
+        Number(dbRow.rate_carousel) ||
+        Number(dbRow.rate_combo) ||
+        0;
+
+      const qty = Number(row.quantity) || 1;
+      const rate = exactRate ?? 0;
+      return { ...row, rate, total_cost: qty * rate };
+    });
+
+    return NextResponse.json({ plan, usedFallback: !hasDB });
   } catch (err: unknown) {
     console.error("generate-plan error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
