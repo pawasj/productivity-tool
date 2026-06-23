@@ -658,10 +658,10 @@ ${selectedBrief.campaign_objective ? `
               </div>
             )}
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
+              <table className="w-full text-sm min-w-[900px]">
+                <thead className="sticky top-0 z-10">
                   <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">Handle / Page</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap sticky left-0 bg-slate-50 z-20">Handle / Page</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Platform</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Deliverable</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 min-w-64">Live Link</th>
@@ -681,8 +681,8 @@ ${selectedBrief.campaign_objective ? `
                     const isSubmitted = Boolean(row.submitted_at);
                     const hasFetched = Boolean(row.fetched_at);
                     return (
-                      <tr key={i} className={`hover:bg-slate-50 transition-colors ${isSubmitted ? "bg-emerald-50/30" : ""}`}>
-                        <td className="px-4 py-3">
+                      <tr key={i} className={`hover:bg-slate-50 transition-colors group ${isSubmitted ? "bg-emerald-50/30" : ""}`}>
+                        <td className="px-4 py-3 sticky left-0 bg-white group-hover:bg-slate-50 z-10">
                           <div className="font-medium text-slate-900">{row.handle_name}</div>
                           {isSubmitted && (
                             <div className="flex items-center gap-1 mt-0.5">
