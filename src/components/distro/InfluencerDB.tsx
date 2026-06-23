@@ -241,15 +241,19 @@ export function InfluencerTable({ subtype }: Props) {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Followers</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Post ₹</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Reel ₹</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Story ₹</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Carousel ₹</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Collab ₹</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Combo ₹</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Contact</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">State</th>
                 <th className="px-4 py-3 w-16"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {loading && <tr><td colSpan={9} className="text-center py-10 text-slate-400">Loading…</td></tr>}
+              {loading && <tr><td colSpan={13} className="text-center py-10 text-slate-400">Loading…</td></tr>}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={9} className="text-center py-10 text-slate-400">
+                <tr><td colSpan={13} className="text-center py-10 text-slate-400">
                   No {subtype === "creator" ? "creators" : "pages"} yet. Import a CSV or add manually.
                 </td></tr>
               )}
@@ -267,6 +271,10 @@ export function InfluencerTable({ subtype }: Props) {
                   <td className="px-4 py-3 text-slate-600">{fmt(inf.followers)}</td>
                   <td className="px-4 py-3 text-slate-600">{inf.rate_post ? `₹${Number(inf.rate_post).toLocaleString()}` : "—"}</td>
                   <td className="px-4 py-3 text-slate-600">{inf.rate_reel ? `₹${Number(inf.rate_reel).toLocaleString()}` : "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{inf.rate_story ? `₹${Number(inf.rate_story).toLocaleString()}` : "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{inf.rate_carousel ? `₹${Number(inf.rate_carousel).toLocaleString()}` : "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{inf.rate_collab_post ? `₹${Number(inf.rate_collab_post).toLocaleString()}` : "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{inf.rate_combo ? `₹${Number(inf.rate_combo).toLocaleString()}` : "—"}</td>
                   <td className="px-4 py-3 text-xs text-slate-500">{inf.contact_no || "—"}</td>
                   <td className="px-4 py-3 text-xs text-slate-500">{inf.state || "—"}</td>
                   <td className="px-4 py-3">
