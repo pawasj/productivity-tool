@@ -128,10 +128,11 @@ function exportAsWordDoc(text: string, filename: string) {
 
 interface BriefPlannerProps {
   initialBriefId?: string;
+  prefillData?: Record<string, string>;
   onNewBrief?: () => void;
 }
 
-export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlannerProps = {}) {
+export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }: BriefPlannerProps = {}) {
   const [brief, setBrief] = useState<BriefForm>(EMPTY_BRIEF);
   const [planRows, setPlanRows] = useState<PlanRow[]>([]);
   const [narrative, setNarrative] = useState("");
@@ -143,6 +144,7 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
   const [showDiscovery, setShowDiscovery] = useState(false);
   const [approved, setApproved] = useState(false);
   const [crmId, setCrmId] = useState<string | null>(null);
+  const [sourceLeadId, setSourceLeadId] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(true);
   const [showNarrative, setShowNarrative] = useState(true);
   const [error, setError] = useState("");
@@ -205,6 +207,20 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
     });
   }, [initialBriefId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pre-fill from lead data when coming from Sales Pipeline
+  useEffect(() => {
+    if (!prefillData || initialBriefId) return;
+    setBrief(b => ({
+      ...b,
+      brand_name: prefillData.brand_name || b.brand_name,
+      poc_name: prefillData.poc_name || b.poc_name,
+      total_budget: prefillData.total_budget || b.total_budget,
+      target_geography: prefillData.target_geography || b.target_geography,
+      additional_notes: prefillData.additional_notes || b.additional_notes,
+    }));
+    if (prefillData.lead_id) setSourceLeadId(prefillData.lead_id);
+  }, [prefillData]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function sb<K extends keyof BriefForm>(k: K, v: BriefForm[K]) { setBrief(b => ({ ...b, [k]: v })); }
 
   function totalAgencyCost() { return planRows.reduce((s, r) => s + (r.total_cost || 0), 0); }
@@ -251,7 +267,12 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
       return (data as Record<string, string> | null)?.id || existingId;
     }
     const { data } = await supabase.from("client_briefs").insert(record).select().single();
-    return (data as Record<string, string> | null)?.id || null;
+    const newId = (data as Record<string, string> | null)?.id || null;
+    // Link brief back to the source lead in Sales Pipeline
+    if (newId && sourceLeadId) {
+      await supabase.from("leads").update({ brief_id: newId }).eq("id", sourceLeadId);
+    }
+    return newId;
   }
 
   // ── Generate Plan (with margin) ───────────────────────────────────────────
@@ -431,6 +452,12 @@ export default function BriefPlanner({ initialBriefId, onNewBrief }: BriefPlanne
 
       {/* ── Brief Form ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6">
+        {sourceLeadId && (
+          <div className="mb-4 px-3 py-2 bg-violet-50 border border-violet-200 rounded-lg text-xs text-violet-700 flex items-center gap-2">
+            <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
+            Pre-filled from Sales Pipeline lead — fill in remaining details and save. This brief will be linked back to the lead automatically.
+          </div>
+        )}
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-semibold text-slate-900">
             {initialBriefId ? `Editing: ${brief.brand_name || "Campaign Brief"}` : "Campaign Brief"}

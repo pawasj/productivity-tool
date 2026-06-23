@@ -205,6 +205,7 @@ export interface Lead {
   latest_update?: string;
   notes?: string;
   next_follow_up?: string;
+  brief_id?: string;
   created_at: string;
   updated_at: string;
   our_poc?: Profile;

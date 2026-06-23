@@ -338,7 +338,17 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 flex-wrap">
                           <button
-                            onClick={() => router.push("/dashboard/distro")}
+                            onClick={() => {
+                              const prefill = encodeURIComponent(JSON.stringify({
+                                brand_name: lead.company_name,
+                                poc_name: lead.contact_name,
+                                total_budget: lead.deal_value?.toString() || "",
+                                target_geography: lead.location || "",
+                                additional_notes: lead.notes || "",
+                                lead_id: lead.id,
+                              }));
+                              router.push(`/dashboard/distro?prefill=${prefill}`);
+                            }}
                             className="flex items-center gap-1 text-xs px-2.5 py-1 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium whitespace-nowrap">
                             <ExternalLink className="w-3 h-3" /> Create Brief
                           </button>

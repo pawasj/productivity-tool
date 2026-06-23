@@ -23,14 +23,23 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("db");
   const [editingBriefId, setEditingBriefId] = useState<string | null>(null);
+  const [prefillData, setPrefillData] = useState<Record<string, string> | null>(null);
 
   useEffect(() => {
     const briefId = searchParams.get("brief");
+    const prefill = searchParams.get("prefill");
     if (briefId) {
       setEditingBriefId(briefId);
       setActiveTab("brief");
-      // Remove query param from URL without navigation
       router.replace("/dashboard/distro", { scroll: false });
+    } else if (prefill) {
+      try {
+        const data = JSON.parse(decodeURIComponent(prefill));
+        setPrefillData(data);
+        setEditingBriefId(null);
+        setActiveTab("brief");
+        router.replace("/dashboard/distro", { scroll: false });
+      } catch { /* ignore bad JSON */ }
     }
   }, []);
 
@@ -82,7 +91,8 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
           <BriefPlanner
             key={editingBriefId || "new"}
             initialBriefId={editingBriefId || undefined}
-            onNewBrief={() => { setEditingBriefId(null); }}
+            prefillData={prefillData || undefined}
+            onNewBrief={() => { setEditingBriefId(null); setPrefillData(null); }}
           />
         )}
       </div>
