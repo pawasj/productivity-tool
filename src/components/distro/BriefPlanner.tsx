@@ -399,12 +399,16 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
   }
   function removeRow(i: number) { setPlanRows(r => r.filter((_, idx) => idx !== i)); }
 
-  // ── Google Sheets Export ──────────────────────────────────────────────────
+  // ── Google Export ─────────────────────────────────────────────────────────
   const [exportingSheet, setExportingSheet] = useState(false);
   const [exportingDoc, setExportingDoc] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   async function exportToGoogleSheet() {
     setExportingSheet(true);
+    setExportError("");
+    // Open the window synchronously before the async call so browsers don't block it as a popup
+    const win = window.open("about:blank", "_blank");
     try {
       const res = await fetch("/api/distro/export-google-sheet", {
         method: "POST",
@@ -412,14 +416,22 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
         body: JSON.stringify({ brand_name: brief.brand_name, rows: planRows, margin: agencyMargin }),
       });
       const json = await res.json();
-      if (!res.ok || json.error) { setError(json.error || "Export failed."); return; }
-      window.open(json.url, "_blank");
-    } catch { setError("Unexpected error during export."); }
-    finally { setExportingSheet(false); }
+      if (!res.ok || json.error) {
+        win?.close();
+        setExportError(json.error || "Export failed. Check that your Google account is connected in Profile.");
+        return;
+      }
+      if (win) win.location.href = json.url; else window.open(json.url, "_blank");
+    } catch {
+      win?.close();
+      setExportError("Unexpected error during export. Try again.");
+    } finally { setExportingSheet(false); }
   }
 
   async function exportToGoogleDoc() {
     setExportingDoc(true);
+    setExportError("");
+    const win = window.open("about:blank", "_blank");
     try {
       const res = await fetch("/api/distro/export-google-doc", {
         method: "POST",
@@ -427,10 +439,16 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
         body: JSON.stringify({ brand_name: brief.brand_name, narrative }),
       });
       const json = await res.json();
-      if (!res.ok || json.error) { setError(json.error || "Export failed."); return; }
-      window.open(json.url, "_blank");
-    } catch { setError("Unexpected error during export."); }
-    finally { setExportingDoc(false); }
+      if (!res.ok || json.error) {
+        win?.close();
+        setExportError(json.error || "Export failed. Check that your Google account is connected in Profile.");
+        return;
+      }
+      if (win) win.location.href = json.url; else window.open(json.url, "_blank");
+    } catch {
+      win?.close();
+      setExportError("Unexpected error during export. Try again.");
+    } finally { setExportingDoc(false); }
   }
 
   const hasPlan = planRows.length > 0;
@@ -793,6 +811,11 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
               )}
             </div>
           </div>
+          {exportError && (
+            <div className="mx-6 mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg flex items-start gap-2">
+              <span className="font-semibold shrink-0">Export error:</span> {exportError}
+            </div>
+          )}
           {showPlan && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
