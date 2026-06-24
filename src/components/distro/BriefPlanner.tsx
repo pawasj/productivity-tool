@@ -3,13 +3,12 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import {
-  Wand2, FileText, Download, Check, Lock, Pencil,
+  Wand2, FileText, Check, Lock, Pencil,
   ChevronDown, ChevronUp, Loader2, Plus, Trash2,
   Search, MessageCircle, X, DatabaseZap, LayoutList,
   ExternalLink, Percent, LayoutGrid,
 } from "lucide-react";
 import ManualPlanBuilder from "./ManualPlanBuilder";
-import * as XLSX from "xlsx";
 
 import type { PlanRow } from "@/lib/types";
 
@@ -92,196 +91,6 @@ const SCORE_COLOR: Record<string, string> = {
   Low: "bg-slate-100 text-slate-600",
 };
 
-// ─── Word Doc Export ──────────────────────────────────────────────────────────
-
-function markdownToWordHtml(md: string): string {
-  const lines = md.split("\n");
-  const out: string[] = [];
-  let inList = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Escape HTML entities first
-    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-    // Inline formatting helper
-    const inline = (s: string) => esc(s)
-      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.*?)\*/g, "<em>$1</em>")
-      .replace(/`(.*?)`/g, "<code style='font-family:Consolas,monospace;font-size:10pt;background:#f1f5f9;padding:1pt 4pt'>$1</code>");
-
-    const trimmed = line.trimEnd();
-
-    // Close list if needed
-    if (inList && !trimmed.startsWith("- ") && !trimmed.startsWith("* ")) {
-      out.push("</ul>");
-      inList = false;
-    }
-
-    if (/^# (.+)/.test(trimmed)) {
-      out.push(`<h1>${inline(trimmed.slice(2))}</h1>`);
-    } else if (/^## (.+)/.test(trimmed)) {
-      out.push(`<h2>${inline(trimmed.slice(3))}</h2>`);
-    } else if (/^### (.+)/.test(trimmed)) {
-      out.push(`<h3>${inline(trimmed.slice(4))}</h3>`);
-    } else if (/^#### (.+)/.test(trimmed)) {
-      out.push(`<h4>${inline(trimmed.slice(5))}</h4>`);
-    } else if (/^---+$/.test(trimmed)) {
-      out.push(`<hr style="border:none;border-top:1pt solid #e2e8f0;margin:12pt 0">`);
-    } else if (/^[*-] (.+)/.test(trimmed)) {
-      if (!inList) { out.push("<ul>"); inList = true; }
-      out.push(`<li>${inline(trimmed.replace(/^[*-] /, ""))}</li>`);
-    } else if (trimmed === "") {
-      // blank line → paragraph break (skip consecutive blanks)
-      if (out.length && out[out.length - 1] !== "<br>") out.push("<br>");
-    } else {
-      out.push(`<p>${inline(trimmed)}</p>`);
-    }
-  }
-  if (inList) out.push("</ul>");
-  // Remove consecutive <br> runs
-  return out.join("\n").replace(/(<br>\n?){2,}/g, "<br>");
-}
-
-function exportAsWordDoc(text: string, filename: string, brandName?: string) {
-  const body = markdownToWordHtml(text);
-  const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
-
-  const doc = `<html xmlns:o='urn:schemas-microsoft-com:office:office'
-    xmlns:w='urn:schemas-microsoft-com:office:word'
-    xmlns='http://www.w3.org/TR/REC-html40'>
-<head>
-  <meta charset='utf-8'>
-  <!--[if gte mso 9]><xml>
-    <w:WordDocument>
-      <w:View>Print</w:View>
-      <w:Zoom>100</w:Zoom>
-      <w:DoNotOptimizeForBrowser/>
-    </w:WordDocument>
-  </xml><![endif]-->
-  <style>
-    @page { margin: 2.54cm 2.54cm 2.54cm 2.54cm; mso-page-orientation: portrait; }
-    body {
-      font-family: "Calibri", "Arial", sans-serif;
-      font-size: 11pt;
-      color: #1e293b;
-      line-height: 1.65;
-    }
-    h1 {
-      font-family: "Calibri", sans-serif;
-      font-size: 22pt;
-      font-weight: 700;
-      color: #0f172a;
-      margin-top: 24pt;
-      margin-bottom: 6pt;
-      mso-style-next: Normal;
-      page-break-after: avoid;
-    }
-    h2 {
-      font-family: "Calibri", sans-serif;
-      font-size: 15pt;
-      font-weight: 700;
-      color: #1e3a8a;
-      border-bottom: 2pt solid #1e3a8a;
-      padding-bottom: 3pt;
-      margin-top: 20pt;
-      margin-bottom: 6pt;
-      page-break-after: avoid;
-    }
-    h3 {
-      font-family: "Calibri", sans-serif;
-      font-size: 12pt;
-      font-weight: 700;
-      color: #334155;
-      margin-top: 14pt;
-      margin-bottom: 4pt;
-      page-break-after: avoid;
-    }
-    h4 {
-      font-family: "Calibri", sans-serif;
-      font-size: 11pt;
-      font-weight: 700;
-      color: #475569;
-      margin-top: 10pt;
-      margin-bottom: 2pt;
-    }
-    p {
-      margin-top: 0;
-      margin-bottom: 8pt;
-      orphans: 3;
-      widows: 3;
-    }
-    ul {
-      margin-top: 4pt;
-      margin-bottom: 8pt;
-      padding-left: 18pt;
-    }
-    li {
-      margin-bottom: 4pt;
-      line-height: 1.5;
-    }
-    .cover {
-      text-align: center;
-      padding: 60pt 0 40pt 0;
-      page-break-after: always;
-    }
-    .cover-brand {
-      font-size: 32pt;
-      font-weight: 700;
-      color: #0f172a;
-      margin-bottom: 8pt;
-      font-family: "Calibri", sans-serif;
-    }
-    .cover-title {
-      font-size: 18pt;
-      color: #1e3a8a;
-      margin-bottom: 6pt;
-    }
-    .cover-meta {
-      font-size: 11pt;
-      color: #64748b;
-      margin-top: 4pt;
-    }
-    .cover-divider {
-      border: none;
-      border-top: 3pt solid #1e3a8a;
-      width: 80pt;
-      margin: 20pt auto;
-    }
-    .cover-agency {
-      font-size: 10pt;
-      color: #94a3b8;
-      margin-top: 40pt;
-    }
-    strong { font-weight: 700; }
-    em { font-style: italic; }
-  </style>
-</head>
-<body>
-
-  <!-- Cover Page -->
-  <div class="cover">
-    <p class="cover-brand">${brandName || "Brand"}</p>
-    <hr class="cover-divider">
-    <p class="cover-title">Internet Distribution Narrative</p>
-    <p class="cover-meta">Prepared by BCC Media Network</p>
-    <p class="cover-meta">${today}</p>
-    <p class="cover-agency">Confidential · For Internal Use Only</p>
-  </div>
-
-  <!-- Narrative Content -->
-  ${body}
-
-</body>
-</html>`;
-
-  const blob = new Blob(["﻿", doc], { type: "application/msword" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-}
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
@@ -590,19 +399,38 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
   }
   function removeRow(i: number) { setPlanRows(r => r.filter((_, idx) => idx !== i)); }
 
-  // ── Excel Export ──────────────────────────────────────────────────────────
-  function exportExcel() {
-    const ws = XLSX.utils.json_to_sheet(planRows.map(r => ({
-      "Handle / Page": r.handle_name, Platform: r.platform, Category: r.category,
-      Followers: r.followers, Deliverable: r.deliverable_type, Qty: r.quantity,
-      "Agency Rate (₹)": r.rate, "Agency Total (₹)": r.total_cost,
-      [`Client Rate (₹) — ${agencyMargin}% margin`]: r.client_rate,
-      [`Client Total (₹) — ${agencyMargin}% margin`]: r.client_total,
-    })));
-    ws["!cols"] = [{ wch: 25 }, { wch: 12 }, { wch: 20 }, { wch: 10 }, { wch: 14 }, { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 18 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Media Plan");
-    XLSX.writeFile(wb, `${brief.brand_name || "MediaPlan"}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  // ── Google Sheets Export ──────────────────────────────────────────────────
+  const [exportingSheet, setExportingSheet] = useState(false);
+  const [exportingDoc, setExportingDoc] = useState(false);
+
+  async function exportToGoogleSheet() {
+    setExportingSheet(true);
+    try {
+      const res = await fetch("/api/distro/export-google-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brand_name: brief.brand_name, rows: planRows, margin: agencyMargin }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) { setError(json.error || "Export failed."); return; }
+      window.open(json.url, "_blank");
+    } catch { setError("Unexpected error during export."); }
+    finally { setExportingSheet(false); }
+  }
+
+  async function exportToGoogleDoc() {
+    setExportingDoc(true);
+    try {
+      const res = await fetch("/api/distro/export-google-doc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brand_name: brief.brand_name, narrative }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) { setError(json.error || "Export failed."); return; }
+      window.open(json.url, "_blank");
+    } catch { setError("Unexpected error during export."); }
+    finally { setExportingDoc(false); }
   }
 
   const hasPlan = planRows.length > 0;
@@ -952,9 +780,10 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                   </button>
                 </>
               )}
-              <button onClick={exportExcel}
-                className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50">
-                <Download className="w-3.5 h-3.5" /> Export Excel
+              <button onClick={exportToGoogleSheet} disabled={exportingSheet}
+                className="flex items-center gap-1.5 text-xs text-emerald-700 hover:text-emerald-900 border border-emerald-200 px-3 py-1.5 rounded-lg hover:bg-emerald-50 disabled:opacity-50">
+                {exportingSheet ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                {exportingSheet ? "Exporting…" : "Export to Google Sheets"}
               </button>
               {approved && contactsWithPhone.length > 0 && (
                 <button onClick={() => setShowWhatsApp(true)}
@@ -1039,9 +868,10 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                   <Pencil className="w-3.5 h-3.5" /> {editNarrative ? "Preview" : "Edit"}
                 </button>
               )}
-              <button onClick={() => exportAsWordDoc(narrative, `${brief.brand_name || "Narrative"}_${new Date().toISOString().slice(0, 10)}.doc`, brief.brand_name)}
-                className="flex items-center gap-1.5 text-xs text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50">
-                <Download className="w-3.5 h-3.5" /> Export Word Doc
+              <button onClick={exportToGoogleDoc} disabled={exportingDoc}
+                className="flex items-center gap-1.5 text-xs text-blue-700 hover:text-blue-900 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-50">
+                {exportingDoc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                {exportingDoc ? "Exporting…" : "Export to Google Docs"}
               </button>
             </div>
           </div>
