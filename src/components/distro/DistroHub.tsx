@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Network, Database, FileText } from "lucide-react";
+import { Network, Database, FileText, Clock } from "lucide-react";
 import type { Profile, Vertical } from "@/lib/types";
 import InfluencerDB from "./InfluencerDB";
 import BriefPlanner from "./BriefPlanner";
+import PendingApprovals from "./PendingApprovals";
+import { createClient } from "@/lib/supabase";
 
 interface Props {
   profile: Profile;
@@ -13,17 +15,20 @@ interface Props {
   verticals: Vertical[];
 }
 
-const TABS = [
-  { id: "db", label: "Influencer Database", icon: Database },
-  { id: "brief", label: "Campaign Brief", icon: FileText },
-];
-
 export default function DistroHub({ profile, userId, verticals }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("db");
   const [editingBriefId, setEditingBriefId] = useState<string | null>(null);
   const [prefillData, setPrefillData] = useState<Record<string, string> | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
+  const supabase = createClient();
+
+  // Load pending count for badge
+  useEffect(() => {
+    supabase.from("influencer_submissions").select("id", { count: "exact", head: true }).eq("status", "pending")
+      .then(({ count }) => setPendingCount(count || 0));
+  }, []);
 
   useEffect(() => {
     const briefId = searchParams.get("brief");
@@ -48,6 +53,16 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
     setActiveTab(id);
   }
 
+  const TABS = [
+    { id: "db", label: "Influencer Database", icon: Database },
+    { id: "brief", label: "Campaign Brief", icon: FileText },
+    { id: "pending", label: "Pending Approvals", icon: Clock, badge: pendingCount },
+  ];
+
+  // Which subtype to show in pending (creator or page, based on which DB sub-tab was active)
+  // Default to showing both — we'll put a sub-tab toggle inside PendingApprovals
+  const [pendingSubtype, setPendingSubtype] = useState<"creator" | "page">("creator");
+
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
       {/* Header */}
@@ -64,7 +79,7 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
 
         {/* Tabs */}
         <div className="flex gap-1">
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {TABS.map(({ id, label, icon: Icon, badge }) => (
             <button
               key={id}
               onClick={() => handleTabChange(id)}
@@ -78,6 +93,11 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
               {label}
               {id === "brief" && editingBriefId && (
                 <span className="ml-1 text-xs bg-blue-400/30 px-1.5 py-0.5 rounded-full">editing</span>
+              )}
+              {badge != null && badge > 0 && (
+                <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full font-bold ${activeTab === id ? "bg-white/20 text-white" : "bg-amber-500 text-white"}`}>
+                  {badge}
+                </span>
               )}
             </button>
           ))}
@@ -94,6 +114,20 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
             prefillData={prefillData || undefined}
             onNewBrief={() => { setEditingBriefId(null); setPrefillData(null); }}
           />
+        )}
+        {activeTab === "pending" && (
+          <div>
+            {/* Sub-type toggle */}
+            <div className="flex gap-1 bg-slate-100 rounded-lg p-0.5 w-fit mb-5">
+              {(["creator", "page"] as const).map(t => (
+                <button key={t} onClick={() => setPendingSubtype(t)}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all capitalize ${pendingSubtype === t ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                  {t === "creator" ? "👤 Creators" : "📄 Community Pages"}
+                </button>
+              ))}
+            </div>
+            <PendingApprovals key={pendingSubtype} subtype={pendingSubtype} />
+          </div>
         )}
       </div>
     </div>
