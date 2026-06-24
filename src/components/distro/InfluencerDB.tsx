@@ -6,17 +6,14 @@ import { Search, Upload, Plus, X, Check, Edit2, RefreshCw, Users, Globe } from "
 import Papa from "papaparse";
 import type { Influencer } from "@/lib/types";
 
-const CREATOR_CATEGORIES = [
-  "Business & Tech", "Finance", "Startup", "Marketing", "Lifestyle",
-  "Fashion", "Health & Fitness", "Food", "Travel", "Gaming",
-  "Education", "Entertainment", "Sports", "Comedy", "Other",
+const ALL_CATEGORIES = [
+  "Startups", "Memes", "Pop Culture", "News", "Regional", "Motivational",
+  "Clips", "Community", "Politics", "Cinema / OTT", "Cricket / Sports",
+  "Music", "Devotional", "Other",
 ];
 
-const PAGE_CATEGORIES = [
-  "Meme Page", "Pop Culture", "News", "Regional", "Motivational",
-  "Volume Led", "Community", "Media", "Politics", "Cinema",
-  "Cricket / Sports", "Music", "Devotional", "Other",
-];
+const CREATOR_CATEGORIES = ALL_CATEGORIES;
+const PAGE_CATEGORIES = ALL_CATEGORIES;
 
 const PLATFORMS = [
   { value: "instagram", label: "Instagram" },
