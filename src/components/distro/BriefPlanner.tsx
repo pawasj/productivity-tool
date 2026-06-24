@@ -171,11 +171,30 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
       const savedDels = String(d.deliverables || "").split(",").map((s: string) => s.trim()).filter((s: string) => DELIVERABLE_OPTIONS.includes(s));
       if (savedDels.length > 0) setSelectedDeliverables(savedDels);
       if (d.media_plan_json && Array.isArray(d.media_plan_json)) {
-        setPlanRows((d.media_plan_json as PlanRow[]).map(r => ({
+        const savedRows = (d.media_plan_json as PlanRow[]).map(r => ({
           ...r,
           client_rate: r.client_rate ?? Math.round((r.rate || 0) * 1.3),
           client_total: r.client_total ?? Math.round((r.total_cost || 0) * 1.3),
-        })));
+        }));
+        // Backfill channel_link from live influencer DB for rows that are missing it
+        const missingLinks = savedRows.some(r => !r.channel_link);
+        if (missingLinks) {
+          const handles = savedRows.map(r => String(r.handle_name || "").replace(/^@/, "").toLowerCase().trim());
+          supabase.from("influencers").select("handle_name, channel_link").in("handle_name", handles)
+            .then(({ data: dbInfs }) => {
+              if (dbInfs && dbInfs.length > 0) {
+                const linkMap = new Map((dbInfs as { handle_name: string; channel_link?: string }[]).map(inf => [inf.handle_name.toLowerCase().trim(), inf.channel_link || ""]));
+                setPlanRows(savedRows.map(r => ({
+                  ...r,
+                  channel_link: r.channel_link || linkMap.get(String(r.handle_name || "").replace(/^@/, "").toLowerCase().trim()) || "",
+                })));
+              } else {
+                setPlanRows(savedRows);
+              }
+            });
+        } else {
+          setPlanRows(savedRows);
+        }
         setShowPlan(true);
       }
       if (d.narrative_text) { setNarrative(String(d.narrative_text)); setShowNarrative(true); }
