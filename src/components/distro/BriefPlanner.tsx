@@ -58,6 +58,8 @@ const EMPTY_BRIEF: BriefForm = {
 const CAMPAIGN_TYPES = ["Brand Awareness", "Product Launch", "Lead Generation", "Engagement", "Sales", "Event Promotion", "Other"];
 const INDUSTRIES = ["FMCG", "Tech", "Finance", "Fashion", "Health & Wellness", "Food & Beverage", "Entertainment", "Automobile", "Real Estate", "Other"];
 
+const DELIVERABLE_OPTIONS = ["Reel", "Story", "Post", "Carousel", "Collab Post", "Combo"];
+
 const ALL_PLATFORMS = [
   { id: "instagram", label: "Instagram" },
   { id: "youtube", label: "YouTube" },
@@ -326,6 +328,12 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
   // Manual plan builder
   const [showManualBuilder, setShowManualBuilder] = useState(false);
 
+  // Deliverable type chips
+  const [selectedDeliverables, setSelectedDeliverables] = useState<string[]>([]);
+  function toggleDeliverable(d: string) {
+    setSelectedDeliverables(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
+  }
+
   const supabase = createClient();
 
   // Load existing brief when opened from CRM
@@ -350,6 +358,9 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
         deliverables: String(d.deliverables || ""),
         additional_notes: String(d.additional_notes || ""),
       });
+      // Restore deliverable chips from saved string
+      const savedDels = String(d.deliverables || "").split(",").map((s: string) => s.trim()).filter((s: string) => DELIVERABLE_OPTIONS.includes(s));
+      if (savedDels.length > 0) setSelectedDeliverables(savedDels);
       if (d.media_plan_json && Array.isArray(d.media_plan_json)) {
         setPlanRows((d.media_plan_json as PlanRow[]).map(r => ({
           ...r,
@@ -442,10 +453,11 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
         .eq("is_active", true)
         .in("influencer_type", brief.content_type === "both" ? ["creator", "page"] : [brief.content_type === "creators" ? "creator" : "page"])
         .limit(300);
+      const deliverablesList = selectedDeliverables.length > 0 ? selectedDeliverables.join(", ") : brief.deliverables;
       const res = await fetch("/api/distro/generate-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief, influencers: infs || [], agency_margin: margin }),
+        body: JSON.stringify({ brief: { ...brief, deliverables: deliverablesList }, influencers: infs || [], agency_margin: margin }),
       });
       const json = await res.json();
       if (!res.ok || json.error) { setError(json.error || "Plan generation failed."); return; }
@@ -723,10 +735,21 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Deliverables</label>
-            <input value={brief.deliverables} onChange={e => sb("deliverables", e.target.value)} disabled={approved}
-              placeholder="e.g. Reels, Posts, Stories"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
+            <label className="block text-xs font-medium text-slate-700 mb-2">Deliverable Types</label>
+            <div className="flex flex-wrap gap-2">
+              {DELIVERABLE_OPTIONS.map(d => {
+                const active = selectedDeliverables.includes(d);
+                return (
+                  <button key={d} type="button" disabled={approved} onClick={() => toggleDeliverable(d)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-all disabled:opacity-60 ${active ? "border-indigo-500 bg-indigo-500 text-white" : "border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50"}`}>
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedDeliverables.length === 0 && !approved && (
+              <p className="text-xs text-slate-400 mt-1.5">Select at least one — AI will only use these deliverable types</p>
+            )}
           </div>
 
           <div className="col-span-2">

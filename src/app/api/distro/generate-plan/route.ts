@@ -53,6 +53,14 @@ ${influencers
       ? "Include ONLY community pages, meme pages, and mass-reach pages — no individual creators."
       : "Include a mix of individual creators AND community/meme pages.";
 
+    // Deliverable types constraint
+    const allowedDeliverables = brief.deliverables
+      ? brief.deliverables.split(",").map((s: string) => s.trim()).filter(Boolean)
+      : [];
+    const deliverableInstruction = allowedDeliverables.length > 0
+      ? `DELIVERABLE TYPES: You MUST ONLY use these deliverable types — [${allowedDeliverables.join(", ")}]. Do NOT use any other type.`
+      : `DELIVERABLE TYPES: Choose the most suitable deliverable type for each handle (Reel, Story, Post, Carousel, Collab Post, or Combo).`;
+
     const prompt = `You are an expert social media distribution planner for BCC Media Network, an Indian marketing agency.
 
 CLIENT BRIEF:
@@ -63,12 +71,14 @@ Total Budget: ₹${budget.toLocaleString()}
 Brief: ${briefText || "No detailed brief provided"}
 
 CONTENT TYPE REQUIREMENT: ${contentTypeInstruction}
+${deliverableInstruction}
 
 YOUR TASK:
 Select the best handles from the database above to build a media plan.
 IMPORTANT: You must ONLY use handles that appear in the database above. Do NOT suggest handles that are not in the list.
 - Target spend: ₹${targetSpend.toLocaleString()} (48% of budget — agency keeps 52%)
 - Select 5–20 handles depending on what the DB has — quality over quantity
+- Each handle gets exactly ONE row with quantity: 1. Do NOT set quantity above 1.
 - Match by category fit to the brand/industry
 - Prefer geography match to ${geography} where state/location data is available
 - Mix follower tiers where possible
@@ -135,9 +145,9 @@ Return ONLY valid JSON — no markdown fences, no explanation outside JSON:
         Number(dbRow.rate_combo) ||
         0;
 
-      const qty = Number(row.quantity) || 1;
+      const qty = 1; // always 1 per handle
       const rate = exactRate ?? 0;
-      return { ...row, rate, total_cost: qty * rate };
+      return { ...row, quantity: 1, rate, total_cost: qty * rate };
     });
 
     return NextResponse.json({ plan, usedFallback: !hasDB });
