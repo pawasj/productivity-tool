@@ -119,7 +119,7 @@ function AnalyticsPanel({ data, onClose }: { data: AnalyticsData; onClose: () =>
   const maxRev = Math.max(...monthlyRevenue.map(m => Math.max(m.approved, m.pipeline)), 1);
 
   // Funnel stage counts (leads only)
-  const funnelStages = ["draft", "pitched", "negotiation", "approved", "completed"];
+  const funnelStages = ["draft", "pitched", "negotiation", "approved", "lost", "completed"];
   const stageCounts = funnelStages.map(s => ({
     stage: s,
     label: STATUS_META[s].label,
