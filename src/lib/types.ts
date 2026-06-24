@@ -313,6 +313,68 @@ export interface ResultRow extends PlanRow {
   extra_note?: string;
 }
 
+export interface Client {
+  id: string;
+  lead_id?: string;
+  name: string;
+  office_address?: string;
+  gst_number?: string;
+  contact_name?: string;
+  contact_phone?: string;
+  contact_email?: string;
+  engagement_type?: "one_time" | "retainer";
+  amount?: number;
+  monthly_value?: number;
+  deliverables?: string;
+  vertical_id?: string;
+  vertical?: Vertical;
+  status?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Expense {
+  id: string;
+  vertical_id?: string;
+  vertical?: Vertical;
+  category: string;
+  description?: string;
+  amount: number;
+  month: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialMediaReport {
+  id: string;
+  client_id?: string;
+  client_name: string;
+  period_from: string;
+  period_to: string;
+  platforms: SocialPlatformData[];
+  screenshots: string[];
+  analysis?: string;
+  report_data?: Record<string, unknown>;
+  share_token?: string;
+  created_by?: string;
+  created_at: string;
+}
+
+export interface SocialPlatformData {
+  platform: string;
+  followers?: number;
+  posts?: number;
+  reach?: number;
+  impressions?: number;
+  engagements?: number;
+  engagement_rate?: number;
+  video_views?: number;
+  new_followers?: number;
+  top_post_reach?: number;
+}
+
 export interface MediaPlanItem {
   id: string;
   plan_id: string;

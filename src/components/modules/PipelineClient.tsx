@@ -522,7 +522,25 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
       .eq("id", lead.id)
       .select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)")
       .single();
-    if (data) setLeads(leads.map(l => l.id === lead.id ? data as Lead : l));
+    if (data) {
+      setLeads(leads.map(l => l.id === lead.id ? data as Lead : l));
+      if (status === "approved") {
+        await supabase.from("clients").upsert({
+          lead_id: lead.id,
+          name: lead.company_name,
+          contact_name: lead.contact_name,
+          contact_email: lead.contact_email || null,
+          contact_phone: lead.contact_phone || null,
+          engagement_type: lead.engagement_type === "retainer" ? "retainer" : "one_time",
+          amount: lead.deal_value || 0,
+          monthly_value: lead.monthly_value || 0,
+          deliverables: lead.notes || "",
+          vertical_id: lead.vertical_id || null,
+          status: "active",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "lead_id" });
+      }
+    }
   }
 
   function openBriefInDistro(briefId: string) {

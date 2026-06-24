@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase";
 import {
   LayoutDashboard, Briefcase, Network, UserCircle,
   LogOut, ChevronRight, Shield,
-  MessageSquareDot, Building2, BarChart3,
+  MessageSquareDot, Building2, BarChart3, Users2, FileBarChart2,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import NotificationBell from "./NotificationBell";
@@ -22,6 +22,8 @@ const navItems = [
   { href: "/dashboard/distro", icon: Network, label: "Distribution Hub" },
   { href: "/dashboard/discussions", icon: MessageSquareDot, label: "Discussion Board" },
   { href: "/dashboard/results", icon: BarChart3, label: "Campaign Results" },
+  { href: "/dashboard/clients", icon: Users2, label: "Client Details" },
+  { href: "/dashboard/reports", icon: FileBarChart2, label: "Reports" },
   { href: "/dashboard/vendors", icon: Building2, label: "Vendor Management" },
   { href: "/dashboard/profile", icon: UserCircle, label: "My Profile" },
 ];
