@@ -821,7 +821,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
-                    {["Handle / Page", "Platform", "Category", "Followers", "Deliverable", "Qty", "Agency Rate ₹", "Agency Total ₹", `Client Rate ₹ (+${agencyMargin}%)`, `Client Total ₹ (+${agencyMargin}%)`].map(h => (
+                    {["Handle / Page", "Link", "Platform", "Category", "Followers", "Deliverable", "Qty", "Agency Rate ₹", "Agency Total ₹", `Client Rate ₹ (+${agencyMargin}%)`, `Client Total ₹ (+${agencyMargin}%)`].map(h => (
                       <th key={h} className={`text-left px-3 py-2.5 text-xs font-semibold uppercase ${h.includes("Client") ? "text-blue-600 bg-blue-50" : "text-slate-500"}`}>{h}</th>
                     ))}
                     {!approved && <th className="w-8" />}
@@ -833,6 +833,13 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                       {approved ? (
                         <>
                           <td className="px-3 py-2 font-medium text-slate-800">{row.handle_name}</td>
+                          <td className="px-3 py-2">
+                            {row.channel_link ? (
+                              <a href={row.channel_link} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 flex items-center gap-1 text-xs">
+                                <ExternalLink className="w-3 h-3" /> Link
+                              </a>
+                            ) : <span className="text-slate-300 text-xs">—</span>}
+                          </td>
                           <td className="px-3 py-2 text-slate-600">{row.platform}</td>
                           <td className="px-3 py-2 text-slate-600">{row.category}</td>
                           <td className="px-3 py-2 text-slate-600">{row.followers}</td>
@@ -846,6 +853,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                       ) : (
                         <>
                           <td className="px-3 py-2"><input value={row.handle_name} onChange={e => updateRow(i, "handle_name", e.target.value)} className="w-full bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-800" /></td>
+                          <td className="px-3 py-2"><input value={row.channel_link || ""} onChange={e => updateRow(i, "channel_link", e.target.value)} placeholder="https://…" className="w-28 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-xs text-slate-500" /></td>
                           <td className="px-3 py-2"><input value={row.platform} onChange={e => updateRow(i, "platform", e.target.value)} className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
                           <td className="px-3 py-2"><input value={row.category} onChange={e => updateRow(i, "category", e.target.value)} className="w-24 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
                           <td className="px-3 py-2"><input value={row.followers} onChange={e => updateRow(i, "followers", e.target.value)} className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-slate-600" /></td>
@@ -863,7 +871,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50">
-                    <td colSpan={7} className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">Agency Total</td>
+                    <td colSpan={8} className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">Agency Total</td>
                     <td className="px-3 py-2.5 font-bold text-slate-700">₹{totalAgencyCost().toLocaleString("en-IN")}</td>
                     <td className="px-3 py-2.5 text-xs font-semibold text-blue-600 text-right">Client Quote</td>
                     <td className="px-3 py-2.5 font-bold text-blue-700">₹{totalClientQuote().toLocaleString("en-IN")}</td>

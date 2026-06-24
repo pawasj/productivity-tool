@@ -99,6 +99,7 @@ export default function ManualPlanBuilder({ agencyMargin, onAdd, onClose }: Prop
         client_rate: clientRate,
         client_total: clientTotal,
         contact_no: inf.contact_no || "",
+        channel_link: inf.channel_link || "",
       };
     });
     onAdd(rows);

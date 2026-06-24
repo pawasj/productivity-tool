@@ -76,10 +76,11 @@ export default function CampaignResults({ initialBriefId }: Props) {
     [briefs, campaignSearch]
   );
 
-  // Load all briefs that have a media plan (regardless of status)
+  // Load only completed briefs that have a media plan
   useEffect(() => {
     supabase.from("client_briefs")
       .select("id, brand_name, industry, campaign_type, campaign_objective, status, media_plan_json, created_at")
+      .eq("status", "completed")
       .not("media_plan_json", "is", null)
       .order("created_at", { ascending: false })
       .then(({ data }) => setBriefs((data || []) as Brief[]));
@@ -466,7 +467,7 @@ ${selectedBrief.campaign_objective ? `
             className="flex-1 max-w-sm px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
           >
             <option value="">
-              {briefs.length === 0 ? "No campaigns with media plans yet…" : `Select a Campaign… (${filteredBriefs.length} found)`}
+              {briefs.length === 0 ? "No completed campaigns yet…" : `Select a Campaign… (${filteredBriefs.length} found)`}
             </option>
             {filteredBriefs.map(b => (
               <option key={b.id} value={b.id}>
@@ -502,7 +503,7 @@ ${selectedBrief.campaign_objective ? `
           <div className="text-center">
             <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-20" />
             {briefs.length === 0
-              ? <><p className="text-sm font-medium text-slate-600">No campaigns with media plans yet</p><p className="text-xs mt-1 max-w-xs">Build a media plan in Distribution Hub for a campaign brief to start tracking results here.</p></>
+              ? <><p className="text-sm font-medium text-slate-600">No completed campaigns yet</p><p className="text-xs mt-1 max-w-xs text-slate-400">Campaign results are only available after a campaign is marked Complete in the Sales Pipeline.</p></>
               : <p className="text-sm">Search and select a campaign above to view results</p>
             }
           </div>

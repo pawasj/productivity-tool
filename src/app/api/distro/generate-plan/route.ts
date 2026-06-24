@@ -147,7 +147,14 @@ Return ONLY valid JSON — no markdown fences, no explanation outside JSON:
 
       const qty = 1; // always 1 per handle
       const rate = exactRate ?? 0;
-      return { ...row, quantity: 1, rate, total_cost: qty * rate };
+      return {
+        ...row,
+        quantity: 1,
+        rate,
+        total_cost: qty * rate,
+        contact_no: dbRow.contact_no || row.contact_no || "",
+        channel_link: dbRow.channel_link || "",
+      };
     });
 
     return NextResponse.json({ plan, usedFallback: !hasDB });

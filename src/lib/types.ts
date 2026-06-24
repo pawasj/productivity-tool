@@ -294,6 +294,7 @@ export interface PlanRow {
   client_rate: number;
   client_total: number;
   contact_no?: string;
+  channel_link?: string;
 }
 
 export interface ResultRow extends PlanRow {

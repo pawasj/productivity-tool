@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
       brand_name: string;
       margin: number;
       rows: Array<{
-        handle_name: string; platform: string; category: string; followers: string;
+        handle_name: string; channel_link?: string; platform: string; category: string; followers: string;
         deliverable_type: string; quantity: number; rate: number; total_cost: number;
         client_rate: number; client_total: number;
       }>;
@@ -33,17 +33,17 @@ export async function POST(req: NextRequest) {
 
     // Build rows: header + data + totals
     const header = [
-      "Handle / Page", "Platform", "Category", "Followers",
+      "Handle / Page", "Channel Link", "Platform", "Category", "Followers",
       "Deliverable", "Qty", "Agency Rate (₹)", "Agency Total (₹)",
       `Client Rate (₹) +${margin}%`, `Client Total (₹) +${margin}%`,
     ];
     const dataRows = rows.map(r => [
-      r.handle_name, r.platform, r.category, r.followers,
+      r.handle_name, r.channel_link || "", r.platform, r.category, r.followers,
       r.deliverable_type, r.quantity, r.rate, r.total_cost,
       r.client_rate, r.client_total,
     ]);
     const totalsRow = [
-      "TOTAL", "", "", "", "", "",
+      "TOTAL", "", "", "", "", "", "",
       "", rows.reduce((s, r) => s + (r.total_cost || 0), 0),
       "", rows.reduce((s, r) => s + (r.client_total || 0), 0),
     ];
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
           // Freeze header
           { updateSheetProperties: { properties: { sheetId: 0, gridProperties: { frozenRowCount: 1 } }, fields: "gridProperties.frozenRowCount" } },
           // Auto-resize columns
-          { autoResizeDimensions: { dimensions: { sheetId: 0, dimension: "COLUMNS", startIndex: 0, endIndex: 10 } } },
+          { autoResizeDimensions: { dimensions: { sheetId: 0, dimension: "COLUMNS", startIndex: 0, endIndex: 11 } } },
         ],
       }),
     });
