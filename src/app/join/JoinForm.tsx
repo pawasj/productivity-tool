@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Plus, X, CheckCircle2, ChevronDown, Users, Globe } from "lucide-react";
 
 const PLATFORMS = [
@@ -124,8 +125,8 @@ export default function JoinForm() {
         <div className="w-full max-w-lg">
           {/* Logo / Brand */}
           <div className="text-center mb-10">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
-              <Globe className="w-8 h-8 text-white" />
+            <div className="flex justify-center mb-4">
+              <Image src="/bcc-logo.png" alt="BCC Media Network" width={160} height={60} className="object-contain" />
             </div>
             <h1 className="text-3xl font-bold text-slate-900">Join BCC Media Network</h1>
             <p className="text-slate-500 mt-2 text-sm">Get discovered by leading brands. Register your profile for free.</p>

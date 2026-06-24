@@ -126,7 +126,7 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
                 </button>
               ))}
             </div>
-            <PendingApprovals key={pendingSubtype} subtype={pendingSubtype} />
+            <PendingApprovals key={pendingSubtype} subtype={pendingSubtype} onCountChange={(delta) => setPendingCount(c => Math.max(0, c + delta))} />
           </div>
         )}
       </div>

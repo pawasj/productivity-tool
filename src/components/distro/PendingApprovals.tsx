@@ -242,7 +242,7 @@ function SubmissionCard({ sub, onApprove, onReject, actionLoading }: CardProps) 
   );
 }
 
-export default function PendingApprovals({ subtype }: { subtype: "creator" | "page" }) {
+export default function PendingApprovals({ subtype, onCountChange }: { subtype: "creator" | "page"; onCountChange?: (delta: number) => void }) {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -272,8 +272,9 @@ export default function PendingApprovals({ subtype }: { subtype: "creator" | "pa
         body: JSON.stringify({ id, action }),
       });
       if (!res.ok) throw new Error("Action failed");
-      // Update local state
+      // Update local state and notify parent to decrement badge
       setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status: action === "approve" ? "approved" : "rejected" } : s));
+      onCountChange?.(-1);
     } catch (err) {
       alert("Something went wrong. Please try again.");
     } finally {
