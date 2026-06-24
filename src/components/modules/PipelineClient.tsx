@@ -21,16 +21,14 @@ interface Props {
   userId: string;
 }
 
-const STATUSES = ["new", "contacted", "proposal", "negotiation", "approved", "won", "lost", "on_hold"] as const;
+const STATUSES = ["draft", "pitched", "negotiation", "approved", "lost", "completed"] as const;
 const STATUS_META: Record<string, { label: string; color: string; dot: string; revenueStage?: boolean }> = {
-  new:         { label: "New",         color: "bg-slate-100 text-slate-600",    dot: "bg-slate-400" },
-  contacted:   { label: "Contacted",   color: "bg-blue-100 text-blue-700",      dot: "bg-blue-400" },
-  proposal:    { label: "Proposal",    color: "bg-amber-100 text-amber-700",    dot: "bg-amber-400" },
-  negotiation: { label: "Negotiation", color: "bg-orange-100 text-orange-700",  dot: "bg-orange-400" },
-  approved:    { label: "Approved",    color: "bg-violet-100 text-violet-700",  dot: "bg-violet-500", revenueStage: true },
-  won:         { label: "Won",         color: "bg-emerald-100 text-emerald-700",dot: "bg-emerald-500", revenueStage: true },
+  draft:       { label: "Draft",       color: "bg-slate-100 text-slate-500",    dot: "bg-slate-300" },
+  pitched:     { label: "Pitched",     color: "bg-blue-100 text-blue-700",      dot: "bg-blue-400" },
+  negotiation: { label: "Negotiation", color: "bg-amber-100 text-amber-700",    dot: "bg-amber-400" },
+  approved:    { label: "Approved",    color: "bg-emerald-100 text-emerald-700",dot: "bg-emerald-500", revenueStage: true },
   lost:        { label: "Lost",        color: "bg-red-100 text-red-600",        dot: "bg-red-400" },
-  on_hold:     { label: "On Hold",     color: "bg-slate-100 text-slate-500",    dot: "bg-slate-300" },
+  completed:   { label: "Completed",   color: "bg-violet-100 text-violet-700",  dot: "bg-violet-500", revenueStage: true },
 };
 
 const BRIEF_STATUSES = ["draft", "planning", "approved", "live", "completed", "lost"] as const;
@@ -52,7 +50,7 @@ type FormState = {
 
 const EMPTY_LEAD: FormState = {
   company_name: "", contact_name: "", contact_email: "", contact_phone: "",
-  status: "new", our_poc_id: "", vertical_id: "", location: "",
+  status: "draft", our_poc_id: "", vertical_id: "", location: "",
   deal_value: "", engagement_type: "one_time", monthly_value: "", deal_month: "",
   latest_update: "", notes: "", next_follow_up: "",
 };
@@ -97,9 +95,9 @@ function AnalyticsPanel({ data, onClose }: { data: AnalyticsData; onClose: () =>
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
       const label = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
 
-      const approvedLeads = leads.filter(l => l.deal_month?.startsWith(key.slice(0, 7)) && (l.status === "approved" || l.status === "won"));
-      const wonLeads = leads.filter(l => l.deal_month?.startsWith(key.slice(0, 7)) && l.status === "won");
-      const pipeLeads = leads.filter(l => l.deal_month?.startsWith(key.slice(0, 7)) && !["lost", "won", "approved"].includes(l.status));
+      const approvedLeads = leads.filter(l => l.deal_month?.startsWith(key.slice(0, 7)) && l.status === "approved");
+      const wonLeads = leads.filter(l => l.deal_month?.startsWith(key.slice(0, 7)) && l.status === "completed");
+      const pipeLeads = leads.filter(l => l.deal_month?.startsWith(key.slice(0, 7)) && !["lost", "completed", "approved"].includes(l.status));
 
       const approvedBriefs = briefs.filter(b => {
         const created = String(b.created_at || "").slice(0, 7);
@@ -121,7 +119,7 @@ function AnalyticsPanel({ data, onClose }: { data: AnalyticsData; onClose: () =>
   const maxRev = Math.max(...monthlyRevenue.map(m => Math.max(m.approved, m.pipeline)), 1);
 
   // Funnel stage counts (leads only)
-  const funnelStages = ["new", "contacted", "proposal", "negotiation", "approved", "won"];
+  const funnelStages = ["draft", "pitched", "negotiation", "approved", "completed"];
   const stageCounts = funnelStages.map(s => ({
     stage: s,
     label: STATUS_META[s].label,
@@ -138,14 +136,14 @@ function AnalyticsPanel({ data, onClose }: { data: AnalyticsData; onClose: () =>
   }).filter(v => v.count > 0).sort((a, b) => b.value - a.value);
 
   // Retainer vs one-time
-  const retainerLeads = leads.filter(l => l.engagement_type === "retainer" && ["approved", "won"].includes(l.status));
-  const onetimeLeads = leads.filter(l => l.engagement_type !== "retainer" && ["approved", "won"].includes(l.status));
+  const retainerLeads = leads.filter(l => l.engagement_type === "retainer" && l.status === "approved");
+  const onetimeLeads = leads.filter(l => l.engagement_type !== "retainer" && l.status === "approved");
   const retainerMRR = retainerLeads.reduce((s, l) => s + (l.monthly_value || 0), 0);
   const onetimeValue = onetimeLeads.reduce((s, l) => s + (l.deal_value || 0), 0);
 
   // Stuck leads (in same status, not updated in 14+ days, not won/lost)
   const stuckLeads = leads.filter(l => {
-    if (["won", "lost", "on_hold", "approved"].includes(l.status)) return false;
+    if (["approved", "lost", "completed"].includes(l.status)) return false;
     const daysSince = (Date.now() - new Date(l.updated_at).getTime()) / (1000 * 60 * 60 * 24);
     return daysSince >= 14;
   }).sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime());
@@ -381,37 +379,38 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
 
   // ── Derived stats ──────────────────────────────────────────────────────────
   const stats = useMemo(() => {
-    const activeLeads = leads.filter(l => !["won", "lost", "approved"].includes(l.status));
-    const committedLeads = leads.filter(l => l.status === "approved" || l.status === "won");
-    const retainerLeads = leads.filter(l => l.engagement_type === "retainer" && committedLeads.some(c => c.id === l.id));
+    // Revenue is counted ONLY at "approved" stage
+    const approvedLeads = leads.filter(l => l.status === "approved");
+    const activeLeads = leads.filter(l => !["approved", "lost", "completed"].includes(l.status));
+    const retainerLeads = leads.filter(l => l.engagement_type === "retainer" && l.status === "approved");
 
-    const committedBriefs = briefs.filter(b => ["approved", "live", "completed"].includes(String(b.status || "")));
+    const approvedBriefs = briefs.filter(b => ["approved", "live", "completed"].includes(String(b.status || "")));
 
     const totalPipeline = activeLeads.reduce((s, l) => s + (l.deal_value || 0), 0);
-    const committedRevenue = committedLeads.reduce((s, l) => s + (l.deal_value || 0), 0)
-      + committedBriefs.reduce((s, b) => s + (Number(b.total_budget) || 0), 0);
+    const approvedRevenue = approvedLeads.reduce((s, l) => s + (l.deal_value || 0), 0)
+      + approvedBriefs.reduce((s, b) => s + (Number(b.total_budget) || 0), 0);
     const retainerMRR = retainerLeads.reduce((s, l) => s + (l.monthly_value || 0), 0);
 
     const thisMonth = currentMonthStr().slice(0, 7);
-    const thisMonthCommitted = committedLeads
+    const thisMonthApproved = approvedLeads
       .filter(l => l.deal_month?.startsWith(thisMonth) || l.updated_at.startsWith(thisMonth))
       .reduce((s, l) => s + (l.deal_value || 0), 0);
 
+    const qualifiedLeads = leads.filter(l => l.status !== "draft");
     return {
       activePipeline: totalPipeline,
-      committedRevenue,
+      approvedRevenue,
       retainerMRR,
       activeCount: activeLeads.length,
-      committedCount: committedLeads.length,
-      thisMonthCommitted,
-      winRate: leads.length > 0 ? Math.round((committedLeads.length / leads.filter(l => !["new", "contacted"].includes(l.status)).length || 0) * 100) : 0,
+      approvedCount: approvedLeads.length,
+      thisMonthApproved,
+      winRate: qualifiedLeads.length > 0 ? Math.round((approvedLeads.length / qualifiedLeads.length) * 100) : 0,
     };
   }, [leads, briefs]);
 
   // Funnel counts (leads only, for the mini strip)
   const funnelCounts = useMemo(() => {
-    const stages = ["new", "contacted", "proposal", "negotiation", "approved", "won", "lost"];
-    return stages.map(s => ({ stage: s, count: leads.filter(l => l.status === s).length }));
+    return STATUSES.map(s => ({ stage: s, count: leads.filter(l => l.status === s).length }));
   }, [leads]);
 
   // Available months (for filter)
@@ -566,20 +565,20 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
             <p className="text-xl font-bold text-slate-800">{fmtL(stats.activePipeline)}</p>
             <p className="text-xs text-slate-400 mt-0.5">{stats.activeCount} open leads</p>
           </div>
-          <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
-            <p className="text-xs font-medium text-indigo-600 mb-1">Committed Revenue</p>
-            <p className="text-xl font-bold text-indigo-800">{fmtL(stats.committedRevenue)}</p>
-            <p className="text-xs text-indigo-400 mt-0.5">{stats.committedCount} approved / won</p>
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+            <p className="text-xs font-medium text-emerald-600 mb-1">Approved Revenue</p>
+            <p className="text-xl font-bold text-emerald-800">{fmtL(stats.approvedRevenue)}</p>
+            <p className="text-xs text-emerald-400 mt-0.5">{stats.approvedCount} deal{stats.approvedCount !== 1 ? "s" : ""} approved</p>
           </div>
           <div className="bg-violet-50 border border-violet-100 rounded-xl px-4 py-3">
             <p className="text-xs font-medium text-violet-600 mb-1">Retainer MRR</p>
             <p className="text-xl font-bold text-violet-800">{fmtL(stats.retainerMRR)}</p>
             <p className="text-xs text-violet-400 mt-0.5">{fmtL(stats.retainerMRR * 12)} ARR</p>
           </div>
-          <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
-            <p className="text-xs font-medium text-emerald-600 mb-1">This Month</p>
-            <p className="text-xl font-bold text-emerald-800">{fmtL(stats.thisMonthCommitted)}</p>
-            <p className="text-xs text-emerald-400 mt-0.5">Committed revenue</p>
+          <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+            <p className="text-xs font-medium text-indigo-600 mb-1">This Month</p>
+            <p className="text-xl font-bold text-indigo-800">{fmtL(stats.thisMonthApproved)}</p>
+            <p className="text-xs text-indigo-400 mt-0.5">Approved this month</p>
           </div>
           <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
             <p className="text-xs font-medium text-amber-600 mb-1">Win Rate</p>
@@ -590,7 +589,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
 
         {/* Mini Funnel Strip */}
         <div className="mt-4 flex items-center gap-1 overflow-x-auto pb-1">
-          {funnelCounts.filter(f => !["on_hold"].includes(f.stage)).map((f, i, arr) => (
+          {funnelCounts.map((f, i, arr) => (
             <div key={f.stage} className="flex items-center gap-1">
               <button
                 onClick={() => setFilterStatus(filterStatus === f.stage ? "" : f.stage)}
@@ -603,7 +602,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                 {STATUS_META[f.stage]?.label}
                 <span className="ml-0.5 font-bold">{f.count}</span>
               </button>
-              {i < arr.length - 1 && i < arr.length - 1 && !["lost"].includes(f.stage) && (
+              {i < arr.length - 1 && !["lost", "completed"].includes(f.stage) && (
                 <ArrowRight className="w-3 h-3 text-slate-300 shrink-0" />
               )}
             </div>
@@ -707,7 +706,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                     const linkedBrief = lead.brief_id ? briefs.find(b => String(b.id) === lead.brief_id) : null;
                     const briefIsComplete = linkedBrief && ["completed", "live"].includes(String(linkedBrief.status || ""));
                     const briefHasPlan = linkedBrief && Boolean(linkedBrief.media_plan_json);
-                    const isRevenue = lead.status === "approved" || lead.status === "won";
+                    const isRevenue = lead.status === "approved";
                     const isRetainer = lead.engagement_type === "retainer";
 
                     return (

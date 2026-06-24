@@ -199,7 +199,7 @@ export interface Lead {
   contact_email?: string;
   contact_phone?: string;
   our_poc_id?: string;
-  status: "new" | "contacted" | "proposal" | "negotiation" | "approved" | "won" | "lost" | "on_hold";
+  status: "draft" | "pitched" | "negotiation" | "approved" | "lost" | "completed";
   deal_value?: number;
   engagement_type?: "retainer" | "one_time";
   monthly_value?: number;
@@ -243,6 +243,7 @@ export interface Influencer {
   location?: string;
   state?: string;
   notes?: string;
+  is_owned?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;

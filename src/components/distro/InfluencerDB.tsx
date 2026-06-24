@@ -57,6 +57,7 @@ const EMPTY = (type: "creator" | "page"): Partial<Influencer & { influencer_type
   rate_post: undefined, rate_story: undefined, rate_reel: undefined,
   rate_carousel: undefined, rate_combo: undefined, rate_collab_post: undefined,
   contact_no: "", person_name: "", location: "", state: "",
+  is_owned: false,
   influencer_type: type,
 });
 
@@ -72,6 +73,7 @@ export function InfluencerTable({ subtype }: Props) {
   const [catFilter, setCatFilter] = useState("");
   const [platFilter, setPlatFilter] = useState("");
   const [stateFilter, setStateFilter] = useState("");
+  const [ownedFilter, setOwnedFilter] = useState(false);
   const [allStates, setAllStates] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -111,8 +113,9 @@ export function InfluencerTable({ subtype }: Props) {
     if (catFilter) r = r.filter(i => i.category === catFilter);
     if (platFilter) r = r.filter(i => i.platform === platFilter);
     if (stateFilter) r = r.filter(i => i.state === stateFilter);
+    if (ownedFilter) r = r.filter(i => i.is_owned);
     setFiltered(r);
-  }, [search, catFilter, platFilter, stateFilter, items]);
+  }, [search, catFilter, platFilter, stateFilter, ownedFilter, items]);
 
   async function handleCSV(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
@@ -155,6 +158,7 @@ export function InfluencerTable({ subtype }: Props) {
             person_name: row["Person Name"] || row["person_name"] || "",
             location: row["Location"] || row["location"] || "",
             state: row["State"] || row["state"] || "",
+            is_owned: (row["Status"] || row["status"] || "").toLowerCase().trim() === "owned",
             influencer_type: subtype,
           };
           if (mode === "replace") {
@@ -230,6 +234,15 @@ export function InfluencerTable({ subtype }: Props) {
           <option value="">All states</option>
           {allStates.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        <button
+          onClick={() => setOwnedFilter(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
+            ownedFilter
+              ? "bg-emerald-600 text-white border-emerald-600"
+              : "border-slate-200 text-slate-600 hover:bg-slate-50"
+          }`}>
+          🏠 {ownedFilter ? "Owned Only" : "All Media"}
+        </button>
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleCSV} />
         <button onClick={() => setShowImportModal(true)} disabled={importing}
           className="flex items-center gap-2 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-60">
@@ -255,6 +268,7 @@ export function InfluencerTable({ subtype }: Props) {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Handle</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Owned</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Platform</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Category</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Followers</th>
@@ -270,18 +284,24 @@ export function InfluencerTable({ subtype }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {loading && <tr><td colSpan={13} className="text-center py-10 text-slate-400">Loading…</td></tr>}
+              {loading && <tr><td colSpan={14} className="text-center py-10 text-slate-400">Loading…</td></tr>}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={13} className="text-center py-10 text-slate-400">
+                <tr><td colSpan={14} className="text-center py-10 text-slate-400">
                   No {subtype === "creator" ? "creators" : "pages"} yet. Import a CSV or add manually.
                 </td></tr>
               )}
               {filtered.map(inf => (
-                <tr key={inf.id} className="hover:bg-slate-50 group transition-colors">
+                <tr key={inf.id} className={`hover:bg-slate-50 group transition-colors ${inf.is_owned ? "bg-emerald-50/40" : ""}`}>
                   <td className="px-4 py-3">
                     <a href={inf.channel_link || "#"} target="_blank" rel="noopener noreferrer"
                       className="font-medium text-blue-600 hover:underline">{inf.handle_name}</a>
                     {inf.person_name && <p className="text-xs text-slate-400 mt-0.5">{inf.person_name}</p>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {inf.is_owned
+                      ? <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">🏠 Owned</span>
+                      : <span className="text-xs text-slate-300">—</span>
+                    }
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500">{platLabel(inf.platform || "")}</td>
                   <td className="px-4 py-3">
@@ -384,6 +404,20 @@ export function InfluencerTable({ subtype }: Props) {
                 <label className="block text-xs font-medium text-slate-700 mb-1">State</label>
                 <input value={form.state || ""} onChange={e => sf("state", e.target.value)} placeholder="e.g. Maharashtra"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="col-span-2">
+                <label className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 cursor-pointer transition-all ${form.is_owned ? "border-emerald-500 bg-emerald-50" : "border-slate-200 hover:border-slate-300"}`}>
+                  <input
+                    type="checkbox"
+                    checked={!!form.is_owned}
+                    onChange={e => sf("is_owned", e.target.checked)}
+                    className="w-4 h-4 accent-emerald-600"
+                  />
+                  <div>
+                    <span className="text-sm font-semibold text-slate-800">🏠 Owned Media</span>
+                    <p className="text-xs text-slate-400 mt-0.5">This page is managed in-house by BCC Media Network</p>
+                  </div>
+                </label>
               </div>
             </div>
             <div className="flex justify-end gap-2 p-5 border-t border-slate-100">

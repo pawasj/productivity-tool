@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 ${influencers
   .slice(0, 200)
   .map((inf: Record<string, unknown>) =>
-    `- Handle: ${inf.handle_name} | Category: ${inf.category} | Platform: ${inf.platform} | Followers: ${Number(inf.followers || 0).toLocaleString()} | Rates (INR): Post=₹${inf.rate_post || 0}, Reel=₹${inf.rate_reel || 0}, Story=₹${inf.rate_story || 0}, Story=₹${inf.rate_story || 0}, Combo=₹${inf.rate_combo || 0}`
+    `- Handle: ${inf.handle_name}${inf.is_owned ? " [OWNED MEDIA — BCC in-house property, PREFER THIS]" : ""} | Category: ${inf.category} | Platform: ${inf.platform} | Followers: ${Number(inf.followers || 0).toLocaleString()} | Rates (INR): Post=₹${inf.rate_post || 0}, Reel=₹${inf.rate_reel || 0}, Story=₹${inf.rate_story || 0}, Combo=₹${inf.rate_combo || 0}`
   )
   .join("\n")}`;
 
@@ -72,6 +72,7 @@ IMPORTANT: You must ONLY use handles that appear in the database above. Do NOT s
 - Match by category fit to the brand/industry
 - Prefer geography match to ${geography} where state/location data is available
 - Mix follower tiers where possible
+- OWNED MEDIA PRIORITY: Handles marked [OWNED MEDIA] are BCC in-house properties with zero acquisition cost — always prefer these first. Include at least 30–40% owned handles in the plan if they are category-relevant, as this maximises agency margin.
 
 ${influencerSection}
 
