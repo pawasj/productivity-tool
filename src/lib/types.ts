@@ -199,8 +199,11 @@ export interface Lead {
   contact_email?: string;
   contact_phone?: string;
   our_poc_id?: string;
-  status: "new" | "contacted" | "proposal" | "negotiation" | "won" | "lost" | "on_hold";
+  status: "new" | "contacted" | "proposal" | "negotiation" | "approved" | "won" | "lost" | "on_hold";
   deal_value?: number;
+  engagement_type?: "retainer" | "one_time";
+  monthly_value?: number;
+  deal_month?: string;
   location?: string;
   latest_update?: string;
   notes?: string;
