@@ -43,37 +43,37 @@ jobs:
           tar czf bundle.tgz -C deploy .
           echo "Bundle size:"; du -h bundle.tgz
 
-      - name: Upload bundle to Hostinger
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
-          source: bundle.tgz
-          target: ~/
-
-      - name: Deploy & restart on Hostinger
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
-          command_timeout: "10m"
-          script: |
-            set -e
-            APP="$HOME/domains/bombaycontentcompany.com/nodejs"
-            rm -rf "$HOME/bundle-new"
-            mkdir -p "$HOME/bundle-new"
-            tar xzf "$HOME/bundle.tgz" -C "$HOME/bundle-new"
-            # Replace app files, but keep Passenger's tmp/ and log files
-            rsync -a --delete \
-              --exclude 'tmp' \
-              --exclude 'console.log' \
-              --exclude 'stderr.log' \
-              "$HOME/bundle-new/" "$APP/"
-            mkdir -p "$APP/tmp"
-            touch "$APP/tmp/restart.txt"
-            rm -rf "$HOME/bundle-new" "$HOME/bundle.tgz"
-            echo ">> Deployed and restarted."
+      - name: Upload bundle & deploy (with retries)
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          HOSTN: ${{ secrets.SSH_HOST }}
+          USERN: ${{ secrets.SSH_USER }}
+          PORTN: ${{ secrets.SSH_PORT }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+          cat > remote.sh <<'EOF'
+          set -e
+          APP="$HOME/domains/bombaycontentcompany.com/nodejs"
+          rm -rf "$HOME/bundle-new"; mkdir -p "$HOME/bundle-new"
+          tar xzf "$HOME/bundle.tgz" -C "$HOME/bundle-new"
+          # Replace app files, but keep Passenger's tmp/ and log files
+          rsync -a --delete \
+            --exclude 'tmp' --exclude 'console.log' --exclude 'stderr.log' \
+            "$HOME/bundle-new/" "$APP/"
+          mkdir -p "$APP/tmp"; touch "$APP/tmp/restart.txt"
+          rm -rf "$HOME/bundle-new" "$HOME/bundle.tgz"
+          echo ">> Deployed and restarted."
+          EOF
+          SCPO="-P $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60"
+          SSHO="-p $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60 -o ServerAliveInterval=15"
+          n=0
+          while true; do
+            n=$((n+1))
+            echo "=== Deploy attempt $n ==="
+            if sshpass -e scp $SCPO bundle.tgz "$USERN@$HOSTN:bundle.tgz" \
+               && sshpass -e ssh $SSHO "$USERN@$HOSTN" 'bash -s' < remote.sh; then
+              echo "Deploy succeeded on attempt $n"; break
+            fi
+            if [ "$n" -ge 4 ]; then echo "Deploy failed after $n attempts"; exit 1; fi
+            echo "Attempt $n failed; retrying in 30s..."; sleep 30
+          done
