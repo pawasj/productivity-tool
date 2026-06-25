@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Shield, UserPlus, Users, Mail, X, Check, Crown, User, Calendar, Link2, CheckCircle2, AlertCircle, Briefcase } from "lucide-react";
-import type { Profile } from "@/lib/types";
+import { Shield, UserPlus, Users, Mail, X, Check, Crown, User, Calendar, Link2, CheckCircle2, AlertCircle, Settings, Briefcase } from "lucide-react";
+import type { Profile, AppModule } from "@/lib/types";
+import { ALL_MODULES, MODULE_LABELS } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 import HRAdminClient from "@/components/admin/HRAdminClient";
 
@@ -35,9 +36,28 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
   const [inviteDept, setInviteDept] = useState("");
   const [inviteDesignation, setInviteDesignation] = useState("");
   const [inviteManager, setInviteManager] = useState("");
+  const [inviteAccessLevels, setInviteAccessLevels] = useState<AppModule[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Access level editor state (for existing members)
+  const [editingAccess, setEditingAccess] = useState<Profile | null>(null);
+  const [editAccessLevels, setEditAccessLevels] = useState<AppModule[]>([]);
+  const [savingAccess, setSavingAccess] = useState(false);
+
   const supabase = createClient();
+
+  async function saveAccessLevels() {
+    if (!editingAccess) return;
+    setSavingAccess(true);
+    const { data } = await supabase.from("profiles")
+      .update({ access_levels: editAccessLevels })
+      .eq("id", editingAccess.id)
+      .select().single();
+    if (data) setMembers(members.map(m => m.id === editingAccess.id ? data as Profile : m));
+    setSavingAccess(false);
+    setEditingAccess(null);
+  }
 
   async function inviteMember() {
     if (!inviteEmail.trim() || !inviteName.trim() || !invitePassword.trim()) return;
@@ -55,6 +75,7 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
         department: inviteDept.trim() || null,
         designation: inviteDesignation.trim() || null,
         reporting_manager_id: inviteManager || null,
+        access_levels: inviteAccessLevels,
       }),
     });
 
@@ -66,19 +87,14 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
       return;
     }
 
-    // Refresh members list
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", result.user.id)
-      .single();
+    const { data: profile } = await supabase.from("profiles").select("*").eq("id", result.user.id).single();
     if (profile) setMembers([...members, profile as Profile]);
 
-    setMessage({ type: "success", text: `User ${inviteEmail} created. They can log in immediately at productivity-tool-one.vercel.app with the password you set. No email confirmation needed.` });
+    setMessage({ type: "success", text: `User ${inviteEmail} created. They can log in immediately at bombaycontentcompany.com with the password you set.` });
     setSaving(false);
     setShowInvite(false);
     setInviteEmail(""); setInviteName(""); setInvitePassword(""); setInviteRole("member");
-    setInviteDept(""); setInviteDesignation(""); setInviteManager("");
+    setInviteDept(""); setInviteDesignation(""); setInviteManager(""); setInviteAccessLevels([]);
   }
 
   async function toggleRole(member: Profile) {
@@ -206,6 +222,7 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                 <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">Email</th>
                 <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">Role</th>
                 <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">Joined</th>
+                <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">Module Access</th>
                 <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">Actions</th>
               </tr>
             </thead>
@@ -239,14 +256,37 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                   </td>
                   <td className="px-5 py-3 text-sm text-slate-400">{formatDate(member.created_at)}</td>
                   <td className="px-5 py-3">
-                    {member.id !== currentUser.id && (
-                      <button
-                        onClick={() => toggleRole(member)}
-                        className="text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors"
-                      >
-                        Make {member.role === "admin" ? "Member" : "Admin"}
-                      </button>
+                    {member.role === "admin" ? (
+                      <span className="text-xs text-indigo-400">All modules</span>
+                    ) : (member.access_levels?.length ?? 0) > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {(member.access_levels || []).map(mod => (
+                          <span key={mod} className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-medium">
+                            {MODULE_LABELS[mod as AppModule]}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-300 italic">No access set</span>
                     )}
+                  </td>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setEditingAccess(member); setEditAccessLevels(member.access_levels || []); }}
+                        className="text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <Settings className="w-3 h-3" /> Access
+                      </button>
+                      {member.id !== currentUser.id && (
+                        <button
+                          onClick={() => toggleRole(member)}
+                          className="text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors"
+                        >
+                          Make {member.role === "admin" ? "Member" : "Admin"}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -324,6 +364,24 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                     ))}
                   </div>
                 </div>
+                {inviteRole === "member" && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Module Access</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {ALL_MODULES.filter(m => m !== "admin_access").map(mod => {
+                        const checked = inviteAccessLevels.includes(mod);
+                        return (
+                          <label key={mod} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${checked ? "border-indigo-300 bg-indigo-50" : "border-slate-200 hover:bg-slate-50"}`}>
+                            <input type="checkbox" checked={checked}
+                              onChange={e => setInviteAccessLevels(prev => e.target.checked ? [...prev, mod] : prev.filter(m => m !== mod))}
+                              className="w-3.5 h-3.5 rounded accent-indigo-600" />
+                            <span className={`text-xs font-medium ${checked ? "text-indigo-700" : "text-slate-600"}`}>{MODULE_LABELS[mod]}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex gap-3 p-5 border-t border-slate-100">
                 <button onClick={() => setShowInvite(false)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Cancel</button>
@@ -331,6 +389,47 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                   disabled={saving || !inviteEmail.trim() || !inviteName.trim() || !invitePassword.trim()}
                   className="flex-1 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
                   {saving ? "Creating…" : "Create Account"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Access Level Edit Modal */}
+        {editingAccess && (
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+              <div className="flex items-center justify-between p-5 border-b border-slate-100">
+                <div>
+                  <h3 className="font-semibold text-slate-900">Module Access — {editingAccess.full_name}</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Choose which modules this user can access</p>
+                </div>
+                <button onClick={() => setEditingAccess(null)} className="p-1.5 hover:bg-slate-100 rounded-lg">
+                  <X className="w-4 h-4 text-slate-500" />
+                </button>
+              </div>
+              <div className="p-5">
+                <div className="grid grid-cols-2 gap-2">
+                  {ALL_MODULES.map(mod => {
+                    const checked = editAccessLevels.includes(mod);
+                    return (
+                      <label key={mod} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${checked ? "border-indigo-300 bg-indigo-50" : "border-slate-200 hover:bg-slate-50"}`}>
+                        <input type="checkbox" checked={checked}
+                          onChange={e => setEditAccessLevels(prev => e.target.checked ? [...prev, mod] : prev.filter(m => m !== mod))}
+                          className="w-3.5 h-3.5 rounded accent-indigo-600" />
+                        <span className={`text-xs font-medium ${checked ? "text-indigo-700" : "text-slate-600"}`}>{MODULE_LABELS[mod]}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-slate-400 mt-3">Admins have full access regardless of this setting.</p>
+              </div>
+              <div className="flex gap-3 p-5 border-t border-slate-100">
+                <button onClick={() => setEditingAccess(null)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+                <button onClick={saveAccessLevels} disabled={savingAccess}
+                  className="flex-1 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                  {savingAccess ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> : <Check className="w-3.5 h-3.5" />}
+                  Save Access
                 </button>
               </div>
             </div>
