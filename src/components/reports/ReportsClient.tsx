@@ -1,18 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { FileBarChart2, TrendingUp, Receipt, BarChart3, Share2 } from "lucide-react";
+import { FileBarChart2, TrendingUp, Receipt, BarChart3 } from "lucide-react";
 import type { Vertical } from "@/lib/types";
 import SalesReport from "./SalesReport";
 import ExpenseReport from "./ExpenseReport";
 import PnLReport from "./PnLReport";
-import SocialMediaReport from "./SocialMediaReport";
 
 const TABS = [
   { id: "sales", label: "Sales Report", icon: TrendingUp },
   { id: "expense", label: "Expense Report", icon: Receipt },
   { id: "pnl", label: "P&L Report", icon: BarChart3 },
-  { id: "social", label: "Social Media Report", icon: Share2 },
 ];
 
 interface Props { verticals: Vertical[]; userId: string; }
@@ -29,7 +27,7 @@ export default function ReportsClient({ verticals, userId }: Props) {
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-900">Reports</h1>
-            <p className="text-sm text-slate-400">Sales, Expenses, P&L, and Social Media reporting</p>
+            <p className="text-sm text-slate-400">Sales, Expenses & P&L reporting</p>
           </div>
         </div>
         <div className="flex gap-1">
@@ -45,7 +43,6 @@ export default function ReportsClient({ verticals, userId }: Props) {
         {activeTab === "sales" && <SalesReport verticals={verticals} />}
         {activeTab === "expense" && <ExpenseReport verticals={verticals} userId={userId} />}
         {activeTab === "pnl" && <PnLReport verticals={verticals} />}
-        {activeTab === "social" && <SocialMediaReport verticals={verticals} userId={userId} />}
       </div>
     </div>
   );
