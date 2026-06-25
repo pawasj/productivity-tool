@@ -8,7 +8,8 @@ import type { Vertical } from "@/lib/types";
 interface Lead {
   id: string; company_name: string; contact_name: string; deal_value?: number;
   monthly_value?: number; engagement_type?: string; status: string;
-  deal_month?: string; vertical_id?: string; vertical?: { name: string; color: string };
+  deal_month?: string; updated_at: string; vertical_id?: string;
+  vertical?: { name: string; color: string };
   our_poc?: { full_name: string };
 }
 
@@ -30,7 +31,7 @@ export default function SalesReport({ verticals }: Props) {
     const { data } = await supabase
       .from("leads")
       .select("*, vertical:verticals(name,color), our_poc:profiles!leads_our_poc_id_fkey(full_name)")
-      .eq("status", "approved")
+      .in("status", ["approved", "completed"])
       .order("deal_month", { ascending: false });
     setLeads((data || []) as Lead[]);
     setLoading(false);
@@ -38,7 +39,10 @@ export default function SalesReport({ verticals }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  const monthLeads = leads.filter(l => l.deal_month?.startsWith(month));
+  // Match by deal_month if set, otherwise fall back to the month the lead was approved (updated_at)
+  const monthLeads = leads.filter(l =>
+    l.deal_month ? l.deal_month.startsWith(month) : l.updated_at.startsWith(month)
+  );
   const retainerLeads = monthLeads.filter(l => l.engagement_type === "retainer");
   const onetimeLeads = monthLeads.filter(l => l.engagement_type !== "retainer");
   const totalRevenue = onetimeLeads.reduce((s, l) => s + (l.deal_value || 0), 0)
@@ -75,7 +79,7 @@ export default function SalesReport({ verticals }: Props) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const label = d.toLocaleDateString("en-IN", { month: "short" });
-    const rev = leads.filter(l => l.deal_month?.startsWith(key))
+    const rev = leads.filter(l => l.deal_month ? l.deal_month.startsWith(key) : l.updated_at.startsWith(key))
       .reduce((s, l) => s + (l.engagement_type === "retainer" ? (l.monthly_value || 0) : (l.deal_value || 0)), 0);
     trendMonths.push({ key, label, revenue: rev });
   }

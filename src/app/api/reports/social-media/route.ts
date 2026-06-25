@@ -5,7 +5,83 @@ import type { SocialPlatformData } from "@/lib/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-function fmtNum(n?: number) { if (!n && n !== 0) return "N/A"; if (n >= 1e6) return `${(n/1e6).toFixed(1)}M`; if (n >= 1e3) return `${(n/1e3).toFixed(1)}K`; return n.toString(); }
+function fmtNum(n?: number) {
+  if (!n && n !== 0) return "N/A";
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return n.toString();
+}
+
+// POST /api/reports/extract-screenshots — extract metrics from screenshots
+export async function PUT(req: NextRequest) {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { screenshots } = await req.json() as { screenshots: Array<{ base64: string; mediaType: string; platform: string }> };
+    if (!screenshots?.length) return NextResponse.json({ platforms: [] });
+
+    const content: Anthropic.MessageParam["content"] = [
+      {
+        type: "text",
+        text: `You are an expert at reading social media analytics screenshots. For each screenshot below, extract ALL visible metrics and return structured JSON.
+
+Return a JSON array (one entry per screenshot) with this structure:
+[
+  {
+    "platform": "Instagram",
+    "followers": 12500,
+    "new_followers": 340,
+    "posts": 18,
+    "reach": 85000,
+    "impressions": 120000,
+    "engagements": 4200,
+    "engagement_rate": 4.9,
+    "video_views": 35000,
+    "top_post_reach": 22000
+  }
+]
+
+Rules:
+- Use null for any metric not visible in the screenshot
+- Infer the platform from the UI style if not labeled
+- Convert abbreviated numbers (e.g. "12.5K" → 12500, "1.2M" → 1200000)
+- engagement_rate should be a percentage number (e.g. 4.9 for 4.9%)
+- Only return the JSON array, no explanation`,
+      },
+    ];
+
+    for (const s of screenshots) {
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: s.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+          data: s.base64,
+        },
+      });
+    }
+
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2000,
+      messages: [{ role: "user", content }],
+    });
+
+    const raw = (message.content[0] as { type: string; text: string }).text;
+    // Extract JSON from response (may have markdown fences)
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    const extracted: SocialPlatformData[] = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+    // Strip null values
+    const cleaned = extracted.map(p => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== null && v !== undefined))) as SocialPlatformData[];
+
+    return NextResponse.json({ platforms: cleaned });
+  } catch (err) {
+    console.error("screenshot extract error:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,16 +90,15 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const { client_id, client_name, period_from, period_to, platforms } = body as {
+    const { client_id, client_name, period_from, period_to, platforms, screenshots } = body as {
       client_id?: string; client_name: string; period_from: string; period_to: string;
-      platforms: SocialPlatformData[];
+      platforms: SocialPlatformData[]; screenshots?: string[];
     };
 
     if (!client_name || !period_from || !period_to || !platforms?.length) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Build metrics summary for AI
     const metricsSummary = platforms.map(p => {
       const lines: string[] = [`Platform: ${p.platform}`];
       if (p.followers) lines.push(`  Followers: ${fmtNum(p.followers)}`);
@@ -70,7 +145,6 @@ Guidelines:
 
     const analysis = (message.content[0] as { type: string; text: string }).text;
 
-    // Save to DB
     const { data: report, error } = await supabase
       .from("social_media_reports")
       .insert({
@@ -79,7 +153,7 @@ Guidelines:
         period_from,
         period_to,
         platforms,
-        screenshots: [],
+        screenshots: screenshots || [],
         analysis,
         report_data: { generated_at: new Date().toISOString() },
         created_by: user.id,
@@ -89,7 +163,6 @@ Guidelines:
       .single();
 
     if (error) throw error;
-
     return NextResponse.json({ share_token: report.share_token });
   } catch (err) {
     console.error("social-media report error:", err);

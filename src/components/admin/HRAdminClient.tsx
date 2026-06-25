@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
-import type { Profile, LeaveApplication, CompanyHoliday } from "@/lib/types";
+import type { Profile, LeaveApplication, CompanyHoliday, AppModule } from "@/lib/types";
+import { ALL_MODULES, MODULE_LABELS } from "@/lib/types";
 import {
   Users, Calendar, ClipboardList, Save, Plus, Trash2,
   CheckCircle2, XCircle, Loader2, AlertCircle,
@@ -89,6 +90,7 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
       date_of_joining: editingMember.date_of_joining || null,
       employment_type: editingMember.employment_type,
       phone: editingMember.phone,
+      access_levels: editingMember.access_levels || [],
     }).eq("id", editingMember.id);
     setSaving(false);
     if (error) { flash("error", error.message); return; }
@@ -201,6 +203,30 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
                   <input value={editingMember.phone || ""} onChange={e => setEditingMember({ ...editingMember, phone: e.target.value })} placeholder="+91 98765 43210" className={inputCls} />
                 </HRField>
               </div>
+              {/* Access Levels */}
+              <div className="mt-5 pt-5 border-t border-slate-100">
+                <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-3">Module Access</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                  {ALL_MODULES.map(mod => {
+                    const checked = (editingMember.access_levels || []).includes(mod);
+                    return (
+                      <label key={mod} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${checked ? "border-indigo-300 bg-indigo-50" : "border-slate-200 hover:bg-slate-50"}`}>
+                        <input type="checkbox" checked={checked}
+                          onChange={e => {
+                            const cur = editingMember.access_levels || [];
+                            setEditingMember({
+                              ...editingMember,
+                              access_levels: e.target.checked ? [...cur, mod] : cur.filter(m => m !== mod),
+                            });
+                          }}
+                          className="w-3.5 h-3.5 rounded accent-indigo-600" />
+                        <span className={`text-xs font-medium ${checked ? "text-indigo-700" : "text-slate-600"}`}>{MODULE_LABELS[mod]}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-slate-400 mt-2">Admins automatically have full access regardless of selection.</p>
+              </div>
               <div className="flex gap-2 mt-5">
                 <button onClick={saveMember} disabled={saving}
                   className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg disabled:opacity-60">
@@ -215,7 +241,7 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    {["Employee", "Designation / Dept", "Team", "Reporting To", "Role", "Joined", ""].map(h => (
+                    {["Employee", "Designation / Dept", "Team", "Reporting To", "Role", "Module Access", "Joined", ""].map(h => (
                       <th key={h} className="text-left text-xs font-semibold text-slate-500 px-4 py-3">{h}</th>
                     ))}
                   </tr>
@@ -246,6 +272,21 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.role === "admin" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
                             {m.role}
                           </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {m.role === "admin" ? (
+                            <span className="text-xs text-indigo-500 font-medium">All modules</span>
+                          ) : (m.access_levels?.length ?? 0) > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {(m.access_levels || []).map(mod => (
+                                <span key={mod} className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+                                  {MODULE_LABELS[mod as AppModule]}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-300">No access set</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-slate-400 text-xs">
                           {m.date_of_joining ? new Date(m.date_of_joining).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}

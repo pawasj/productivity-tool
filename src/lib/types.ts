@@ -7,6 +7,28 @@ export interface Vertical {
   created_at: string;
 }
 
+export const ALL_MODULES = [
+  "sales_pipeline",
+  "distribution_hub",
+  "campaign_results",
+  "client_details",
+  "reports",
+  "social_media_reports",
+  "admin_access",
+] as const;
+
+export type AppModule = typeof ALL_MODULES[number];
+
+export const MODULE_LABELS: Record<AppModule, string> = {
+  sales_pipeline: "Sales Pipeline",
+  distribution_hub: "Distribution Hub",
+  campaign_results: "Campaign Results",
+  client_details: "Client Details",
+  reports: "Reports",
+  social_media_reports: "Social Media Reports",
+  admin_access: "Admin Access",
+};
+
 export interface Profile {
   id: string;
   email: string;
@@ -21,6 +43,7 @@ export interface Profile {
   employee_id?: string;
   date_of_joining?: string;
   employment_type?: "full_time" | "part_time" | "contract" | "intern";
+  access_levels?: AppModule[];
   created_at: string;
   google_calendar_token?: Record<string, unknown>;
   google_calendar_email?: string;
