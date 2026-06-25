@@ -95,7 +95,6 @@ export default function LoginPage() {
           <p className="text-center text-xs text-slate-400 mt-6">
             Access is by invitation only. Contact your admin for access.
           </p>
-          <p className="text-center text-xs text-slate-400 mt-2">test</p>
         </div>
       </div>
     </div>
