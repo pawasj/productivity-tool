@@ -1,35 +1,79 @@
 name: Deploy to Hostinger
 
-# Jab bhi 'main' branch pe push hoga, ye apne aap chalega:
-# Hostinger pe SSH karega -> code pull -> install -> build -> app restart
+# Har push (main branch) pe: GitHub runner pe build -> Hostinger pe deploy -> restart
 on:
   push:
     branches: [main]
-  workflow_dispatch: {} # GitHub se manually bhi chala sakte ho (Actions tab -> Run workflow)
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-hostinger
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy over SSH
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env.local (build + runtime env)
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: printf '%s\n' "$ENV_FILE" > .env.local
+
+      - name: Build (standalone)
+        run: npm run build
+
+      - name: Assemble standalone bundle
+        run: |
+          rm -rf deploy
+          cp -r .next/standalone deploy
+          mkdir -p deploy/.next
+          cp -r .next/static deploy/.next/static
+          if [ -d public ]; then cp -r public deploy/public; fi
+          cp .env.local deploy/.env.local
+          tar czf bundle.tgz -C deploy .
+          echo "Bundle size:"; du -h bundle.tgz
+
+      - name: Upload bundle to Hostinger
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          source: bundle.tgz
+          target: ~/
+
+      - name: Deploy & restart on Hostinger
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: "20m"
+          command_timeout: "10m"
           script: |
             set -e
-            cd ${{ secrets.APP_PATH }}
-            echo ">> Pulling latest code..."
-            git fetch origin main
-            git reset --hard origin/main
-            echo ">> Installing dependencies..."
-            npm install
-            echo ">> Building Next.js..."
-            npm run build
-            echo ">> Restarting app (Passenger)..."
-            mkdir -p tmp
-            touch tmp/restart.txt
-            echo ">> Done. Live!"
+            APP="$HOME/domains/bombaycontentcompany.com/nodejs"
+            rm -rf "$HOME/bundle-new"
+            mkdir -p "$HOME/bundle-new"
+            tar xzf "$HOME/bundle.tgz" -C "$HOME/bundle-new"
+            # Replace app files, but keep Passenger's tmp/ and log files
+            rsync -a --delete \
+              --exclude 'tmp' \
+              --exclude 'console.log' \
+              --exclude 'stderr.log' \
+              "$HOME/bundle-new/" "$APP/"
+            mkdir -p "$APP/tmp"
+            touch "$APP/tmp/restart.txt"
+            rm -rf "$HOME/bundle-new" "$HOME/bundle.tgz"
+            echo ">> Deployed and restarted."
