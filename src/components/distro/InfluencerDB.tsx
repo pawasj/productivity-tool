@@ -78,6 +78,7 @@ export function InfluencerTable({ subtype }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Influencer & { influencer_type: string }>>(EMPTY(subtype));
+  const [formType, setFormType] = useState<"creator" | "page">(subtype);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
@@ -187,19 +188,26 @@ export function InfluencerTable({ subtype }: Props) {
   async function save() {
     if (!form.handle_name?.trim()) return;
     setSaving(true);
-    const record = { ...form, influencer_type: subtype };
+    const record = { ...form, influencer_type: editingId ? formType : subtype };
     if (editingId) {
       const { data } = await supabase.from("influencers").update(record).eq("id", editingId).select().single();
-      if (data) setItems(items.map(i => i.id === editingId ? data as Influencer & { influencer_type?: string } : i));
+      if (data) {
+        // If type changed, remove from current list (it now belongs to the other tab)
+        if (formType !== subtype) setItems(items.filter(i => i.id !== editingId));
+        else setItems(items.map(i => i.id === editingId ? data as Influencer & { influencer_type?: string } : i));
+      }
     } else {
       const { data } = await supabase.from("influencers").insert(record).select().single();
       if (data) setItems([data as Influencer & { influencer_type?: string }, ...items]);
     }
-    setSaving(false); setShowForm(false); setEditingId(null); setForm(EMPTY(subtype));
+    setSaving(false); setShowForm(false); setEditingId(null); setForm(EMPTY(subtype)); setFormType(subtype);
   }
 
   function openEdit(inf: Influencer & { influencer_type?: string }) {
-    setEditingId(inf.id); setForm(inf); setShowForm(true);
+    setEditingId(inf.id);
+    setForm(inf);
+    setFormType((inf.influencer_type as "creator" | "page") || subtype);
+    setShowForm(true);
   }
 
   async function remove(id: string) {
@@ -339,10 +347,27 @@ export function InfluencerTable({ subtype }: Props) {
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-start justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl my-8">
             <div className="flex items-center justify-between p-5 border-b border-slate-100">
-              <h3 className="font-semibold text-slate-900">{editingId ? "Edit" : "Add"} {subtype === "creator" ? "Creator" : "Page"}</h3>
+              <h3 className="font-semibold text-slate-900">{editingId ? "Edit" : "Add"} Entry</h3>
               <button onClick={() => setShowForm(false)} className="p-1.5 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4 text-slate-500" /></button>
             </div>
             <div className="p-5 grid grid-cols-2 gap-4">
+              {/* Type toggle — only shown when editing */}
+              {editingId && (
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">List Type</label>
+                  <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-fit">
+                    {(["creator", "page"] as const).map(t => (
+                      <button key={t} onClick={() => setFormType(t)}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${formType === t ? "bg-white shadow text-blue-700" : "text-slate-500 hover:text-slate-700"}`}>
+                        {t === "creator" ? "👤 Creator" : "📄 Community Page"}
+                      </button>
+                    ))}
+                  </div>
+                  {formType !== subtype && (
+                    <p className="text-xs text-amber-600 mt-1.5">This entry will move to the <strong>{formType === "creator" ? "Creators" : "Community Pages"}</strong> list on save.</p>
+                  )}
+                </div>
+              )}
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-700 mb-1">Handle Name *</label>
                 <input value={form.handle_name || ""} onChange={e => sf("handle_name", e.target.value)} placeholder="@handle"

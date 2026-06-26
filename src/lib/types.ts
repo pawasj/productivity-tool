@@ -227,6 +227,7 @@ export interface Lead {
   engagement_type?: "retainer" | "one_time";
   monthly_value?: number;
   deal_month?: string;
+  approved_at?: string;
   location?: string;
   latest_update?: string;
   notes?: string;

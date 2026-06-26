@@ -8,8 +8,8 @@ import type { Vertical } from "@/lib/types";
 interface Lead {
   id: string; company_name: string; contact_name: string; deal_value?: number;
   monthly_value?: number; engagement_type?: string; status: string;
-  deal_month?: string; updated_at: string; vertical_id?: string;
-  vertical?: { name: string; color: string };
+  deal_month?: string; approved_at?: string; updated_at: string;
+  vertical_id?: string; vertical?: { name: string; color: string };
   our_poc?: { full_name: string };
 }
 
@@ -39,9 +39,11 @@ export default function SalesReport({ verticals }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Use deal_month if explicitly set; otherwise use the month the lead was last updated (approval month)
+  // Priority: deal_month (explicit) → approved_at (when status changed to approved) → updated_at fallback
   function leadMonth(l: Lead) {
-    return l.deal_month ? l.deal_month.slice(0, 7) : l.updated_at.slice(0, 7);
+    if (l.deal_month) return l.deal_month.slice(0, 7);
+    if (l.approved_at) return l.approved_at.slice(0, 7);
+    return l.updated_at.slice(0, 7);
   }
   const monthLeads = leads.filter(l => leadMonth(l) === month);
   const retainerLeads = monthLeads.filter(l => l.engagement_type === "retainer");

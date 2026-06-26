@@ -21,7 +21,7 @@ export default function PnLReport({ verticals }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     const [{ data: leads }, { data: exps }] = await Promise.all([
-      supabase.from("leads").select("deal_value, monthly_value, engagement_type, vertical_id, vertical:verticals(name,color)").eq("status", "approved").like("deal_month", `${month}%`),
+      supabase.from("leads").select("deal_value, monthly_value, engagement_type, vertical_id, deal_month, approved_at, updated_at, vertical:verticals(name,color)").eq("status", "approved"),
       supabase.from("expenses").select("amount, vertical_id, vertical:verticals(name,color)").eq("month", month),
     ]);
 
@@ -29,7 +29,13 @@ export default function PnLReport({ verticals }: Props) {
     let totalExp = 0;
     const vMap = new Map<string, { name: string; color: string; revenue: number; expense: number }>();
 
+    function lMonth(l: Record<string, unknown>) {
+      if (l.deal_month) return String(l.deal_month).slice(0, 7);
+      if (l.approved_at) return String(l.approved_at).slice(0, 7);
+      return String(l.updated_at || "").slice(0, 7);
+    }
     for (const l of (leads || []) as Record<string, unknown>[]) {
+      if (lMonth(l) !== month) continue;
       const val = l.engagement_type === "retainer" ? Number(l.monthly_value || 0) : Number(l.deal_value || 0);
       totalRev += val;
       const vId = String(l.vertical_id || "unassigned");

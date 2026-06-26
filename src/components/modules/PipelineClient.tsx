@@ -517,8 +517,13 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
   }
 
   async function updateStatus(lead: Lead, status: Lead["status"]) {
+    const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+    // Record approval timestamp once — never overwrite it if already set
+    if (status === "approved" && !lead.approved_at) {
+      patch.approved_at = new Date().toISOString();
+    }
     const { data } = await supabase.from("leads")
-      .update({ status, updated_at: new Date().toISOString() })
+      .update(patch)
       .eq("id", lead.id)
       .select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)")
       .single();
