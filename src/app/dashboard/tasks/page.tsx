@@ -1,12 +1,14 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
 import TasksClient from "@/components/tasks/TasksClient";
+import { requireAccess } from "@/lib/access";
 import type { Vertical, Profile } from "@/lib/types";
 
 export default async function TasksPage() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  await requireAccess("tasks");
 
   const [{ data: verticals }, { data: members }] = await Promise.all([
     supabase.from("verticals").select("*").order("order_index"),

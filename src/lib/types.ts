@@ -10,10 +10,15 @@ export interface Vertical {
 export const ALL_MODULES = [
   "sales_pipeline",
   "distribution_hub",
+  "discussions",
   "campaign_results",
   "client_details",
   "reports",
   "social_media_reports",
+  "tasks",
+  "salary",
+  "research_hub",
+  "vendor_management",
   "admin_access",
 ] as const;
 
@@ -22,11 +27,32 @@ export type AppModule = typeof ALL_MODULES[number];
 export const MODULE_LABELS: Record<AppModule, string> = {
   sales_pipeline: "Sales Pipeline",
   distribution_hub: "Distribution Hub",
+  discussions: "Discussion Board",
   campaign_results: "Campaign Results",
   client_details: "Client Details",
   reports: "Reports",
   social_media_reports: "Social Media Reports",
-  admin_access: "Admin Access",
+  tasks: "Tasks",
+  salary: "Salary & Payouts",
+  research_hub: "Research Hub",
+  vendor_management: "Vendor Management",
+  admin_access: "Admin Panel",
+};
+
+// Which sidebar route maps to which module key
+export const MODULE_ROUTES: Record<AppModule, string> = {
+  sales_pipeline: "/dashboard/pipeline",
+  distribution_hub: "/dashboard/distro",
+  discussions: "/dashboard/discussions",
+  campaign_results: "/dashboard/results",
+  client_details: "/dashboard/clients",
+  reports: "/dashboard/reports",
+  social_media_reports: "/dashboard/social-reports",
+  tasks: "/dashboard/tasks",
+  salary: "/dashboard/salary",
+  research_hub: "/dashboard/research",
+  vendor_management: "/dashboard/vendors",
+  admin_access: "/dashboard/admin",
 };
 
 export interface Profile {

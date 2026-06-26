@@ -1,12 +1,14 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
 import SalaryClient from "@/components/salary/SalaryClient";
+import { requireAccess } from "@/lib/access";
 import type { Vertical, Profile } from "@/lib/types";
 
 export default async function SalaryPage() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  await requireAccess("salary");
 
   const [{ data: verticals }, { data: members }, { data: vendors }] = await Promise.all([
     supabase.from("verticals").select("*").order("order_index"),

@@ -7,29 +7,32 @@ import { createClient } from "@/lib/supabase";
 import {
   LayoutDashboard, Briefcase, Network, UserCircle,
   LogOut, ChevronRight, Shield,
-  MessageSquareDot, Building2, BarChart3, Users2, FileBarChart2, Share2, CheckSquare, IndianRupee, FlaskConical,
+  MessageSquareDot, Building2, BarChart3, Users2, FileBarChart2, Share2,
+  CheckSquare, IndianRupee, FlaskConical,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
+import { canAccess } from "@/lib/access";
 import NotificationBell from "./NotificationBell";
 
 interface SidebarProps {
   profile: Profile | null;
 }
 
-const navItems = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", exact: true },
-  { href: "/dashboard/pipeline", icon: Briefcase, label: "Sales Pipeline" },
-  { href: "/dashboard/distro", icon: Network, label: "Distribution Hub" },
-  { href: "/dashboard/discussions", icon: MessageSquareDot, label: "Discussion Board" },
-  { href: "/dashboard/results", icon: BarChart3, label: "Campaign Results" },
-  { href: "/dashboard/clients", icon: Users2, label: "Client Details" },
-  { href: "/dashboard/reports", icon: FileBarChart2, label: "Reports" },
-  { href: "/dashboard/social-reports", icon: Share2, label: "Social Media Reports" },
-  { href: "/dashboard/tasks", icon: CheckSquare, label: "Tasks" },
-  { href: "/dashboard/salary", icon: IndianRupee, label: "Salary & Payouts" },
-  { href: "/dashboard/research", icon: FlaskConical, label: "Research Hub" },
-  { href: "/dashboard/vendors", icon: Building2, label: "Vendor Management" },
-  { href: "/dashboard/profile", icon: UserCircle, label: "My Profile" },
+// Every protected nav item declares which module it needs
+const NAV_ITEMS = [
+  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", exact: true, module: null },
+  { href: "/dashboard/pipeline", icon: Briefcase, label: "Sales Pipeline", module: "sales_pipeline" as const },
+  { href: "/dashboard/distro", icon: Network, label: "Distribution Hub", module: "distribution_hub" as const },
+  { href: "/dashboard/discussions", icon: MessageSquareDot, label: "Discussion Board", module: "discussions" as const },
+  { href: "/dashboard/results", icon: BarChart3, label: "Campaign Results", module: "campaign_results" as const },
+  { href: "/dashboard/clients", icon: Users2, label: "Client Details", module: "client_details" as const },
+  { href: "/dashboard/reports", icon: FileBarChart2, label: "Reports", module: "reports" as const },
+  { href: "/dashboard/social-reports", icon: Share2, label: "Social Media Reports", module: "social_media_reports" as const },
+  { href: "/dashboard/tasks", icon: CheckSquare, label: "Tasks", module: "tasks" as const },
+  { href: "/dashboard/salary", icon: IndianRupee, label: "Salary & Payouts", module: "salary" as const },
+  { href: "/dashboard/research", icon: FlaskConical, label: "Research Hub", module: "research_hub" as const },
+  { href: "/dashboard/vendors", icon: Building2, label: "Vendor Management", module: "vendor_management" as const },
+  { href: "/dashboard/profile", icon: UserCircle, label: "My Profile", module: null },
 ];
 
 export default function Sidebar({ profile }: SidebarProps) {
@@ -45,10 +48,14 @@ export default function Sidebar({ profile }: SidebarProps) {
 
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href || pathname === "/dashboard";
-    // Don't match /dashboard for sub-paths unless exact
     if (href === "/dashboard") return false;
     return pathname.startsWith(href);
   }
+
+  // Filter: null module = always visible, otherwise check canAccess
+  const visibleItems = NAV_ITEMS.filter(item =>
+    item.module === null || canAccess(profile, item.module)
+  );
 
   return (
     <aside className="w-60 bg-white border-r border-slate-200 flex flex-col h-full shrink-0">
@@ -65,7 +72,7 @@ export default function Sidebar({ profile }: SidebarProps) {
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 pt-2 pb-1">
           Workspace
         </p>
-        {navItems.map(({ href, icon: Icon, label, exact }) => {
+        {visibleItems.map(({ href, icon: Icon, label, exact }) => {
           const active = isActive(href, exact);
           return (
             <Link
@@ -84,7 +91,7 @@ export default function Sidebar({ profile }: SidebarProps) {
           );
         })}
 
-        {profile?.role === "admin" && (
+        {canAccess(profile, "admin_access") && (
           <>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 pt-4 pb-1">
               Administration
@@ -99,6 +106,7 @@ export default function Sidebar({ profile }: SidebarProps) {
             >
               <Shield className="w-4 h-4" />
               Admin Panel
+              {pathname.startsWith("/dashboard/admin") && <ChevronRight className="w-3 h-3 ml-auto text-indigo-400" />}
             </Link>
           </>
         )}
