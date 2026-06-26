@@ -25,15 +25,15 @@ export default function TasksClient({ userId, verticals, members }: Props) {
   const [filterVertical, setFilterVertical] = useState("");
   const [filterAssignee, setFilterAssignee] = useState("");
   const [showAssignPicker, setShowAssignPicker] = useState(false);
+  const [memberSearch, setMemberSearch] = useState("");
   const supabase = createClient();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("todos")
-      .select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name,designation)")
-      .order("created_at", { ascending: false });
-    setTasks((data || []) as ExtTodo[]);
+    // Fetch via API route (service role) so RLS doesn't hide other users' / verticals' tasks
+    const res = await fetch("/api/tasks");
+    const json = await res.json();
+    setTasks((json.data || []) as ExtTodo[]);
     setLoading(false);
   }, []);
 
@@ -205,7 +205,7 @@ export default function TasksClient({ userId, verticals, members }: Props) {
               </div>
               {/* Assignees */}
               <div className="relative">
-                <button onClick={() => setShowAssignPicker(v => !v)}
+                <button onClick={() => { setShowAssignPicker(v => !v); setMemberSearch(""); }}
                   className="w-full flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:border-indigo-300 focus:outline-none">
                   <Users className="w-4 h-4 text-slate-400" />
                   {form.assigned_to.length === 0
@@ -214,19 +214,33 @@ export default function TasksClient({ userId, verticals, members }: Props) {
                   <ChevronDown className="w-3.5 h-3.5 ml-auto text-slate-400" />
                 </button>
                 {showAssignPicker && (
-                  <div className="absolute z-20 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-                    {members.map(m => (
-                      <label key={m.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
-                        <input type="checkbox" checked={form.assigned_to.includes(m.id)} onChange={() => toggleAssignee(m.id)} className="accent-indigo-600 w-3.5 h-3.5" />
-                        <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">
-                          {m.full_name?.charAt(0)?.toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-slate-800">{m.full_name}</p>
-                          {m.designation && <p className="text-xs text-slate-400">{m.designation}</p>}
-                        </div>
-                      </label>
-                    ))}
+                  <div className="absolute z-20 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-lg">
+                    <div className="p-2 border-b border-slate-100">
+                      <input
+                        autoFocus
+                        value={memberSearch}
+                        onChange={e => setMemberSearch(e.target.value)}
+                        placeholder="Search members…"
+                        className="w-full px-2.5 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {members.filter(m => !memberSearch || m.full_name?.toLowerCase().includes(memberSearch.toLowerCase())).map(m => (
+                        <label key={m.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                          <input type="checkbox" checked={form.assigned_to.includes(m.id)} onChange={() => toggleAssignee(m.id)} className="accent-indigo-600 w-3.5 h-3.5" />
+                          <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">
+                            {m.full_name?.charAt(0)?.toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-slate-800">{m.full_name}</p>
+                            {m.designation && <p className="text-xs text-slate-400">{m.designation}</p>}
+                          </div>
+                        </label>
+                      ))}
+                      {members.filter(m => !memberSearch || m.full_name?.toLowerCase().includes(memberSearch.toLowerCase())).length === 0 && (
+                        <p className="text-xs text-slate-400 text-center py-4">No members found</p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
