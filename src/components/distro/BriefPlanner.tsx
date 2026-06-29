@@ -864,6 +864,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
               <table className="w-full text-sm min-w-[860px]">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-400 uppercase w-8">#</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase w-48">Handle / Page</th>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Platform</th>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Category</th>
@@ -882,6 +883,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                     <tr key={i} className="hover:bg-slate-50/80 group">
                       {approved ? (
                         <>
+                          <td className="px-3 py-2.5 text-center text-xs font-medium text-slate-400">{i + 1}</td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-1.5 min-w-0">
                               <span className="font-semibold text-slate-900 truncate">{row.handle_name}</span>
@@ -905,6 +907,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                         </>
                       ) : (
                         <>
+                          <td className="px-3 py-2 text-center text-xs font-medium text-slate-400">{i + 1}</td>
                           <td className="px-4 py-2">
                             <div className="flex items-center gap-1 min-w-0">
                               <input value={row.handle_name} onChange={e => updateRow(i, "handle_name", e.target.value)}
@@ -938,7 +941,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50">
-                    <td colSpan={8} className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">Agency Total</td>
+                    <td colSpan={9} className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">Agency Total</td>
                     <td className="px-3 py-2.5 font-bold text-slate-700">₹{totalAgencyCost().toLocaleString("en-IN")}</td>
                     <td className="px-3 py-2.5 text-xs font-semibold text-blue-600 text-right">Client Quote</td>
                     <td className="px-3 py-2.5 font-bold text-blue-700">₹{totalClientQuote().toLocaleString("en-IN")}</td>
