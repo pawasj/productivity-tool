@@ -634,11 +634,11 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">No. of Deliverables per Page</label>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Total No. of Deliverables</label>
             <input type="number" min={1} value={brief.num_deliverables} onChange={e => sb("num_deliverables", e.target.value)} disabled={approved}
-              placeholder="e.g. 2"
+              placeholder="e.g. 25"
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
-            <p className="text-xs text-slate-400 mt-0.5">Quantity of deliverables per handle in the plan</p>
+            <p className="text-xs text-slate-400 mt-0.5">AI will distribute these across all pages (e.g. 15 pages × 25 deliverables = some pages get 2)</p>
           </div>
 
           <div className="col-span-2">
