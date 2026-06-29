@@ -6,14 +6,18 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { brief, influencers } = body;
+    const { brief, influencers, agency_margin } = body;
 
     if (!brief?.brand_name) {
       return NextResponse.json({ error: "brand_name is required" }, { status: 400 });
     }
 
     const budget = parseFloat(brief.total_budget || brief.budget || "0") || 0;
-    const targetSpend = Math.round(budget * 0.48);
+    const margin = typeof agency_margin === "number" ? agency_margin : 30;
+    // Budget is client-facing (inclusive of margin) — reverse-calculate agency spend
+    const targetSpend = Math.round(budget / (1 + margin / 100));
+    const numPages = parseInt(brief.num_pages || "0") || 0;
+    const numDeliverables = parseInt(brief.num_deliverables || "1") || 1;
 
     const hasDB = influencers && influencers.length > 0;
 
@@ -61,28 +65,35 @@ ${influencers
       ? `DELIVERABLE TYPES: You MUST ONLY use these deliverable types — [${allowedDeliverables.join(", ")}]. Do NOT use any other type.`
       : `DELIVERABLE TYPES: Choose the most suitable deliverable type for each handle (Reel, Story, Post, Carousel, Collab Post, or Combo).`;
 
+    const countInstruction = numPages > 0
+      ? `- Select EXACTLY ${numPages} handles from the database (no more, no less — if the DB has fewer, use all available)`
+      : `- Select 5–20 handles depending on what the DB has — quality over quantity`;
+
+    const quantityInstruction = `- Each handle gets quantity: ${numDeliverables} (${numDeliverables} deliverable${numDeliverables > 1 ? "s" : ""} per handle)`;
+
     const prompt = `You are an expert social media distribution planner for BCC Media Network, an Indian marketing agency.
 
 CLIENT BRIEF:
 Brand: ${brief.brand_name}
 Industry: ${brief.industry || "Not specified"}
 Campaign Type: ${brief.campaign_type || "Brand Awareness"}
-Total Budget: ₹${budget.toLocaleString()}
+Total Client Budget: ₹${budget.toLocaleString()} (this is the client-facing total, inclusive of ${margin}% agency margin)
+Media Spend (after ${margin}% margin): ₹${targetSpend.toLocaleString()} — this is what can actually be spent on pages/creators
 Brief: ${briefText || "No detailed brief provided"}
 
 CONTENT TYPE REQUIREMENT: ${contentTypeInstruction}
 ${deliverableInstruction}
 
 YOUR TASK:
-Select the best handles from the database above to build a media plan.
-IMPORTANT: You must ONLY use handles that appear in the database above. Do NOT suggest handles that are not in the list.
-- Target spend: ₹${targetSpend.toLocaleString()} (48% of budget — agency keeps 52%)
-- Select 5–20 handles depending on what the DB has — quality over quantity
-- Each handle gets exactly ONE row with quantity: 1. Do NOT set quantity above 1.
+Select handles from the database below to build a media plan. Use ONLY handles that appear in the database. Do NOT invent new ones.
+${countInstruction}
+${quantityInstruction}
+- total_cost = rate × quantity for each row
+- Try to keep total agency spend (sum of all total_cost) within ₹${targetSpend.toLocaleString()}
+- Handles with rate=0 (zero cost) CAN be included — they are owned media or barter deals; fill them in regardless of budget
 - Match by category fit to the brand/industry
 - Prefer geography match to ${geography} where state/location data is available
-- Mix follower tiers where possible
-- OWNED MEDIA PRIORITY: Handles marked [OWNED MEDIA] are BCC in-house properties with zero acquisition cost — always prefer these first. Include at least 30–40% owned handles in the plan if they are category-relevant, as this maximises agency margin.
+- OWNED MEDIA PRIORITY: Handles marked [OWNED MEDIA] are BCC in-house properties with zero acquisition cost — always prefer these first. Include at least 30–40% owned handles in the plan if they are category-relevant.
 
 ${influencerSection}
 
@@ -95,9 +106,9 @@ Return ONLY valid JSON — no markdown fences, no explanation outside JSON:
       "category": "Meme Page",
       "followers": "2.1M",
       "deliverable_type": "Reel",
-      "quantity": 1,
+      "quantity": ${numDeliverables},
       "rate": 15000,
-      "total_cost": 15000
+      "total_cost": ${15000 * numDeliverables}
     }
   ]
 }`;
@@ -145,11 +156,11 @@ Return ONLY valid JSON — no markdown fences, no explanation outside JSON:
         Number(dbRow.rate_combo) ||
         0;
 
-      const qty = 1; // always 1 per handle
+      const qty = numDeliverables;
       const rate = exactRate ?? 0;
       return {
         ...row,
-        quantity: 1,
+        quantity: qty,
         rate,
         total_cost: qty * rate,
         contact_no: dbRow.contact_no || row.contact_no || "",

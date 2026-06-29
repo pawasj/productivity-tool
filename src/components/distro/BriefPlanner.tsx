@@ -27,6 +27,8 @@ interface BriefForm {
   campaign_objective: string;
   timeline: string;
   deliverables: string;
+  num_pages: string;
+  num_deliverables: string;
   additional_notes: string;
 }
 
@@ -51,7 +53,9 @@ const EMPTY_BRIEF: BriefForm = {
   engagement_model: "one_time", total_budget: "",
   target_audience: "", target_geography: "Pan India",
   content_type: "both",
-  campaign_objective: "", timeline: "", deliverables: "", additional_notes: "",
+  campaign_objective: "", timeline: "", deliverables: "",
+  num_pages: "", num_deliverables: "",
+  additional_notes: "",
 };
 
 const CAMPAIGN_TYPES = ["Brand Awareness", "Product Launch", "Lead Generation", "Engagement", "Sales", "Event Promotion", "Other"];
@@ -165,6 +169,8 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
         campaign_objective: String(d.campaign_objective || ""),
         timeline: String(d.timeline || ""),
         deliverables: String(d.deliverables || ""),
+        num_pages: String(d.num_pages || ""),
+        num_deliverables: String(d.num_deliverables || ""),
         additional_notes: String(d.additional_notes || ""),
       });
       // Restore deliverable chips from saved string
@@ -282,17 +288,22 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
       const res = await fetch("/api/distro/generate-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief: { ...brief, deliverables: deliverablesList }, influencers: infs || [], agency_margin: margin }),
+        body: JSON.stringify({
+          brief: { ...brief, deliverables: deliverablesList },
+          influencers: infs || [],
+          agency_margin: margin,
+        }),
       });
       const json = await res.json();
       if (!res.ok || json.error) { setError(json.error || "Plan generation failed."); return; }
       if (json.empty_db) { setError(json.message || "No matching entries in your Distro Hub database. Import creators/pages first, or use Discovery."); return; }
 
-      // Apply client margin to each row
+      // Budget is inclusive of margin — client total = agency cost × (1 + margin%)
+      // This means sum of client_totals ≈ total_budget entered by user
       const plan: PlanRow[] = (json.plan || []).map((r: Omit<PlanRow, "client_rate" | "client_total">) => {
         const agencyCost = r.total_cost || (r.rate * r.quantity);
+        const clientRate = Math.round(r.rate * (1 + margin / 100));
         const clientTotal = Math.round(agencyCost * (1 + margin / 100));
-        const clientRate = r.quantity > 0 ? Math.round(clientTotal / r.quantity) : Math.round(r.rate * (1 + margin / 100));
         return { ...r, total_cost: agencyCost, client_rate: clientRate, client_total: clientTotal };
       });
 
@@ -612,6 +623,22 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
             {selectedDeliverables.length === 0 && !approved && (
               <p className="text-xs text-slate-400 mt-1.5">Select at least one — AI will only use these deliverable types</p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">No. of Pages / Handles</label>
+            <input type="number" min={1} value={brief.num_pages} onChange={e => sb("num_pages", e.target.value)} disabled={approved}
+              placeholder="e.g. 10"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
+            <p className="text-xs text-slate-400 mt-0.5">How many pages / creators to include in the plan</p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">No. of Deliverables per Page</label>
+            <input type="number" min={1} value={brief.num_deliverables} onChange={e => sb("num_deliverables", e.target.value)} disabled={approved}
+              placeholder="e.g. 2"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
+            <p className="text-xs text-slate-400 mt-0.5">Quantity of deliverables per handle in the plan</p>
           </div>
 
           <div className="col-span-2">
@@ -1149,7 +1176,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
             </div>
             <div className="p-5 space-y-4">
               <p className="text-sm text-slate-600">
-                Set your agency margin. The media plan will show both the <strong>agency cost</strong> (from DB rates) and the <strong>client quote</strong> (cost + margin).
+                The <strong>total budget (₹{Number(brief.total_budget || 0).toLocaleString("en-IN")})</strong> entered in the brief is the <strong>client-facing amount — inclusive of your margin</strong>. Enter your margin below and we'll reverse-calculate what gets spent on media.
               </p>
               <div>
                 <label className="block text-xs font-medium text-slate-500 mb-2">Agency Margin %</label>
@@ -1172,11 +1199,29 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                   ))}
                 </div>
               </div>
-              {pendingMargin && (
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 space-y-1">
-                  <p>Example: Agency cost ₹1,00,000</p>
-                  <p className="font-semibold">→ Client quote: ₹{(100000 * (1 + Number(pendingMargin) / 100)).toLocaleString("en-IN")} ({pendingMargin}% added)</p>
-                </div>
+              {pendingMargin && brief.total_budget && (
+                (() => {
+                  const budget = Number(brief.total_budget) || 0;
+                  const m = Number(pendingMargin) || 0;
+                  const agencySpend = Math.round(budget / (1 + m / 100));
+                  const agencyEarning = budget - agencySpend;
+                  return (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Client pays (budget)</span>
+                        <span className="font-bold text-slate-800">₹{budget.toLocaleString("en-IN")}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Spent on media / pages</span>
+                        <span className="font-semibold text-blue-700">₹{agencySpend.toLocaleString("en-IN")}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-blue-200 pt-2">
+                        <span className="text-slate-600">Agency earning ({m}%)</span>
+                        <span className="font-bold text-emerald-700">₹{agencyEarning.toLocaleString("en-IN")}</span>
+                      </div>
+                    </div>
+                  );
+                })()
               )}
             </div>
             <div className="flex gap-3 p-5 border-t border-slate-100">
