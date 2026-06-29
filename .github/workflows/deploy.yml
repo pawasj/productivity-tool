@@ -10,6 +10,10 @@ concurrency:
   group: deploy-hostinger
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -74,6 +78,19 @@ jobs:
                && sshpass -e ssh $SSHO "$USERN@$HOSTN" 'bash -s' < remote.sh; then
               echo "Deploy succeeded on attempt $n"; break
             fi
-            if [ "$n" -ge 4 ]; then echo "Deploy failed after $n attempts"; exit 1; fi
-            echo "Attempt $n failed; retrying in 30s..."; sleep 30
+            if [ "$n" -ge 6 ]; then echo "Deploy failed after $n attempts"; exit 1; fi
+            echo "Attempt $n failed; retrying in 60s..."; sleep 60
           done
+
+      # If the deploy still failed (e.g. Hostinger SSH was unreachable for a
+      # while), automatically re-run the whole workflow — a fresh run gets a new
+      # runner IP and a later time when Hostinger SSH is usually back. Capped at
+      # 3 attempts so it can never loop forever.
+      - name: Auto re-run on failure
+        if: ${{ failure() && fromJSON(github.run_attempt) < 3 }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Deploy failed on attempt ${{ github.run_attempt }} — re-running workflow..."
+          sleep 30
+          gh run rerun ${{ github.run_id }} --failed
