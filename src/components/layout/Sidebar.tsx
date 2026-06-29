@@ -11,7 +11,7 @@ import {
   CheckSquare, IndianRupee, FlaskConical,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
-import { canAccess } from "@/lib/access";
+import { canAccess } from "@/lib/access-client";
 import NotificationBell from "./NotificationBell";
 
 interface SidebarProps {
