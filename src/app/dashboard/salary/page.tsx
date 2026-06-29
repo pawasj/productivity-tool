@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
 import SalaryClient from "@/components/salary/SalaryClient";
 import { requireAccess } from "@/lib/access";
@@ -10,10 +10,11 @@ export default async function SalaryPage() {
   if (!user) redirect("/login");
   await requireAccess("salary");
 
+  const svc = createServiceRoleClient();
   const [{ data: verticals }, { data: members }, { data: vendors }] = await Promise.all([
-    supabase.from("verticals").select("*").order("order_index"),
-    supabase.from("profiles").select("id, full_name, designation, department, role").order("full_name"),
-    supabase.from("vendors").select("id, name, type, service_type, rate").order("name"),
+    svc.from("verticals").select("*").order("order_index"),
+    svc.from("profiles").select("id, full_name, designation, department, role").order("full_name"),
+    svc.from("vendors").select("id, name, type, service_type, rate").order("name"),
   ]);
 
   return (

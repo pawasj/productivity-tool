@@ -58,6 +58,16 @@ export default function ResearchClient({ userId }: { userId: string }) {
   function updateLink(i: number, v: string) { setLinks(prev => prev.map((l, idx) => idx === i ? v : l)); }
   function removeLink(i: number) { setLinks(prev => prev.filter((_, idx) => idx !== i)); }
 
+  async function deleteReport(id: string) {
+    if (!confirm("Delete this research report?")) return;
+    await fetch("/api/research", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setReports(prev => prev.filter(r => r.id !== id));
+  }
+
   async function runResearch() {
     if (!brandName.trim() || selectedTypes.length === 0) return;
     setRunning(true);
@@ -139,13 +149,22 @@ export default function ResearchClient({ userId }: { userId: string }) {
                       {r.creator?.full_name && ` · ${r.creator.full_name}`}
                     </p>
                   </div>
-                  {r.status === "done" ? (
-                    <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-violet-500 transition-colors shrink-0 mt-0.5" />
-                  ) : r.status === "running" ? (
-                    <Loader2 className="w-4 h-4 text-violet-400 animate-spin shrink-0" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                    {r.status === "done" ? (
+                      <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-violet-500 transition-colors" />
+                    ) : r.status === "running" ? (
+                      <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-400" />
+                    )}
+                    <button
+                      onClick={e => { e.stopPropagation(); deleteReport(r.id); }}
+                      className="p-1 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Delete report"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {r.analysis_types.map(t => (

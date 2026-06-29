@@ -195,6 +195,19 @@ export async function GET() {
   return NextResponse.json({ data: data || [] });
 }
 
+export async function DELETE(req: NextRequest) {
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await req.json();
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  const service = createServiceRoleClient();
+  await service.from("research_reports").delete().eq("id", id);
+  return NextResponse.json({ ok: true });
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
