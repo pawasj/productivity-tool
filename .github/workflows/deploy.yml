@@ -57,16 +57,21 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
           cat > remote.sh <<'EOF'
           set -e
-          APP="$HOME/domains/bombaycontentcompany.com/nodejs"
-          rm -rf "$HOME/bundle-new"; mkdir -p "$HOME/bundle-new"
-          tar xzf "$HOME/bundle.tgz" -C "$HOME/bundle-new"
-          # Replace app files, but keep Passenger's tmp/ and log files
-          rsync -a --delete \
-            --exclude 'tmp' --exclude 'console.log' --exclude 'stderr.log' \
-            "$HOME/bundle-new/" "$APP/"
-          mkdir -p "$APP/tmp"; touch "$APP/tmp/restart.txt"
-          rm -rf "$HOME/bundle-new" "$HOME/bundle.tgz"
-          echo ">> Deployed and restarted."
+          PARENT="$HOME/domains/bombaycontentcompany.com"
+          APP="$PARENT/nodejs"
+          STAGE="$PARENT/nodejs-stage"
+          # Build the new app in a staging dir first
+          rm -rf "$STAGE"; mkdir -p "$STAGE"
+          tar xzf "$HOME/bundle.tgz" -C "$STAGE"
+          mkdir -p "$STAGE/tmp"
+          # Atomic swap: a cancelled/interrupted deploy can never leave a
+          # half-written live app dir (that caused ChunkLoadError crashes).
+          rm -rf "$PARENT/nodejs-old"
+          mv "$APP" "$PARENT/nodejs-old"
+          mv "$STAGE" "$APP"
+          touch "$APP/tmp/restart.txt"
+          rm -rf "$PARENT/nodejs-old" "$HOME/bundle.tgz"
+          echo ">> Deployed (atomic swap) and restarted."
           EOF
           SCPO="-P $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60"
           SSHO="-p $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60 -o ServerAliveInterval=15"
