@@ -18,8 +18,17 @@ jobs:
           PORTN: ${{ secrets.SSH_PORT }}
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          echo "=== EXTERNAL 443 from runner ==="
+          curl -s -m 15 -o /dev/null -w "  https://bombaycontentcompany.com/login -> %{http_code} (%{time_total}s)\n" https://bombaycontentcompany.com/login 2>&1 || echo "  external 443 UNREACHABLE from runner"
           SSHO="-p $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60"
           sshpass -e ssh $SSHO "$USERN@$HOSTN" 'bash -s' <<'EOF'
+          D="$HOME/domains/bombaycontentcompany.com"
+          echo "=== LOCAL 443 via Passenger vhost ==="
+          curl -sk -m 20 -o /tmp/out.html -w "  https://127.0.0.1/login -> %{http_code} (%{time_total}s)\n" -H "Host: bombaycontentcompany.com" https://127.0.0.1/login 2>&1 || echo "  local 443 FAILED"
+          echo "  --- response head ---"; head -c 400 /tmp/out.html 2>/dev/null; echo
+          echo "=== lucide ssr chunk present? ==="
+          ls "$D/nodejs/.next/server/chunks/ssr/" 2>/dev/null | grep -i lucide | head
+          echo "  total ssr chunks:"; ls "$D/nodejs/.next/server/chunks/ssr/" 2>/dev/null | wc -l
           echo "=== uptime / load ==="; uptime
           echo "=== disk ==="; df -h ~ | tail -2
           echo "=== quota ==="; quota -s 2>/dev/null | tail -4 || echo "(no quota cmd)"
