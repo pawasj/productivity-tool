@@ -1,0 +1,37 @@
+name: Diagnose Hostinger
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH diagnostics
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          HOSTN: ${{ secrets.SSH_HOST }}
+          USERN: ${{ secrets.SSH_USER }}
+          PORTN: ${{ secrets.SSH_PORT }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          SSHO="-p $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60"
+          sshpass -e ssh $SSHO "$USERN@$HOSTN" 'bash -s' <<'EOF'
+          echo "=== uptime / load ==="; uptime
+          echo "=== disk ==="; df -h ~ | tail -2
+          echo "=== quota ==="; quota -s 2>/dev/null | tail -4 || echo "(no quota cmd)"
+          D="$HOME/domains/bombaycontentcompany.com"
+          echo "=== public_html ==="; ls -la "$D/public_html" | head
+          echo "=== .htaccess ==="; cat "$D/public_html/.htaccess" 2>/dev/null || echo "(no .htaccess!)"
+          echo "=== nodejs dir ==="; ls -la "$D/nodejs" | head -20
+          echo "=== stderr.log (app errors) ==="; tail -40 "$D/nodejs/stderr.log" 2>/dev/null
+          echo "=== console.log ==="; tail -20 "$D/nodejs/console.log" 2>/dev/null
+          echo "=== node processes ==="; ps aux | grep -i node | grep -v grep | head
+          echo "=== LOCAL http test (LiteSpeed on the box) ==="
+          curl -s -m 12 -o /dev/null -w "  localhost:80 Host=domain -> %{http_code} (time %{time_total}s)\n" -H "Host: bombaycontentcompany.com" http://127.0.0.1/login 2>&1 || echo "  local curl FAILED"
+          echo "=== suspension / limit markers ==="; ls -la "$D" | grep -iE "suspend|disabled" || echo "  none"
+          echo "=== restart app ==="; mkdir -p "$D/nodejs/tmp"; touch "$D/nodejs/tmp/restart.txt"; echo "  restarted"
+          EOF
