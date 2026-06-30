@@ -927,6 +927,13 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                             className="flex items-center gap-1 text-xs px-2.5 py-1 bg-violet-600 text-white rounded-lg hover:bg-violet-700 font-medium whitespace-nowrap">
                             <ExternalLink className="w-3 h-3" /> Open
                           </button>
+                          <button onClick={async () => {
+                            if (!confirm("Delete this brief permanently?")) return;
+                            await supabase.from("client_briefs").delete().eq("id", String(brief.id));
+                            setBriefs(p => p.filter(b => String(b.id) !== String(brief.id)));
+                          }} className="p-1.5 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-colors text-slate-400" title="Delete brief">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                           {briefStatus !== "completed" && Boolean(brief.media_plan_json) && (
                             <button onClick={async () => {
                               await supabase.from("client_briefs").update({ status: "completed" }).eq("id", String(brief.id));
