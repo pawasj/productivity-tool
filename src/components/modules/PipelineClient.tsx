@@ -439,8 +439,15 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
 
   // ── Actions ────────────────────────────────────────────────────────────────
   async function updateBriefStatus(briefId: string, status: string) {
-    await supabase.from("client_briefs").update({ status }).eq("id", briefId);
+    // Optimistic update
     setBriefs(prev => prev.map(b => String(b.id) === briefId ? { ...b, status } : b));
+    const { error } = await supabase.from("client_briefs").update({ status }).eq("id", briefId);
+    if (error) {
+      alert(`Failed to save status: ${error.message}`);
+      // Rollback
+      setBriefs(prev => prev.map(b => String(b.id) === briefId ? { ...b } : b));
+      return;
+    }
     if (status === "completed") router.push(`/dashboard/results?brief=${briefId}`);
   }
 
@@ -514,18 +521,27 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
   }
 
   async function updateStatus(lead: Lead, status: Lead["status"]) {
+    // Optimistic update so the dropdown reflects the change immediately
+    setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status } : l));
+
     const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
     // Record approval timestamp once — never overwrite it if already set
     if (status === "approved" && !lead.approved_at) {
       patch.approved_at = new Date().toISOString();
     }
-    const { data } = await supabase.from("leads")
+    const { data, error } = await supabase.from("leads")
       .update(patch)
       .eq("id", lead.id)
       .select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)")
       .single();
+    if (error) {
+      // Rollback optimistic update and alert user
+      setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: lead.status } : l));
+      alert(`Failed to save status: ${error.message}`);
+      return;
+    }
     if (data) {
-      setLeads(leads.map(l => l.id === lead.id ? data as Lead : l));
+      setLeads(prev => prev.map(l => l.id === lead.id ? data as Lead : l));
       if (status === "approved") {
         await supabase.from("clients").upsert({
           lead_id: lead.id,
