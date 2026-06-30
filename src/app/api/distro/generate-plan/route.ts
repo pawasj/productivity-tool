@@ -6,7 +6,16 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { brief, influencers, agency_margin } = body;
+    const { brief, influencers: allInfluencers, agency_margin, excluded_handles } = body;
+    // Filter out handles used in previous retainer months when policy is "cannot_repeat"
+    const excludedSet = new Set<string>(
+      (excluded_handles || []).map((h: string) => h.replace(/^@/, "").toLowerCase().trim())
+    );
+    const influencers = excludedSet.size > 0
+      ? (allInfluencers as Record<string, unknown>[]).filter(inf =>
+          !excludedSet.has(String(inf.handle_name || "").replace(/^@/, "").toLowerCase().trim())
+        )
+      : allInfluencers;
 
     if (!brief?.brand_name) {
       return NextResponse.json({ error: "brand_name is required" }, { status: 400 });
@@ -29,7 +38,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const influencerSection = `DISTRO HUB DATABASE (${influencers.length} entries — use ONLY these handles, do not invent new ones):
+    const excludedNote = excludedSet.size > 0
+      ? `\nEXCLUDED HANDLES (DO NOT use any of these — they were used in previous months): [${Array.from(excludedSet).join(", ")}]\n`
+      : "";
+
+    const influencerSection = `DISTRO HUB DATABASE (${influencers.length} entries — use ONLY these handles, do not invent new ones):${excludedNote}
 ${influencers
   .slice(0, 200)
   .map((inf: Record<string, unknown>) =>

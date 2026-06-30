@@ -751,6 +751,17 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                               <span className="text-xs text-slate-400">{lead.location}</span>
                             </div>
                           )}
+                          {isRetainer && lead.deal_month && (() => {
+                            const start = new Date(lead.deal_month);
+                            const now = new Date();
+                            const months = (now.getFullYear() - start.getFullYear()) * 12 + now.getMonth() - start.getMonth() + 1;
+                            return months > 0 ? (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <Repeat2 className="w-3 h-3 text-violet-400" />
+                                <span className="text-xs text-violet-600 font-medium">{months} month{months !== 1 ? "s" : ""} active</span>
+                              </div>
+                            ) : null;
+                          })()}
                           {lead.latest_update && (
                             <p className="text-xs text-slate-400 mt-0.5 max-w-40 truncate" title={lead.latest_update}>{lead.latest_update}</p>
                           )}

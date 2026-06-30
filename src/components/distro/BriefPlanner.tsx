@@ -9,6 +9,7 @@ import {
   ExternalLink, Percent, LayoutGrid,
 } from "lucide-react";
 import ManualPlanBuilder from "./ManualPlanBuilder";
+import RetainerPlansSection from "./RetainerPlansSection";
 
 import type { PlanRow } from "@/lib/types";
 
@@ -30,6 +31,8 @@ interface BriefForm {
   num_pages: string;
   num_deliverables: string;
   additional_notes: string;
+  retainer_start_month: string; // YYYY-MM
+  retainer_pages_policy: "can_repeat" | "cannot_repeat";
 }
 
 interface DiscoveryResult {
@@ -48,6 +51,11 @@ interface DiscoveryResult {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+function currentYM() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 const EMPTY_BRIEF: BriefForm = {
   brand_name: "", poc_name: "", industry: "", campaign_type: "",
   engagement_model: "one_time", total_budget: "",
@@ -56,6 +64,8 @@ const EMPTY_BRIEF: BriefForm = {
   campaign_objective: "", timeline: "", deliverables: "",
   num_pages: "", num_deliverables: "",
   additional_notes: "",
+  retainer_start_month: currentYM(),
+  retainer_pages_policy: "can_repeat",
 };
 
 const CAMPAIGN_TYPES = ["Brand Awareness", "Product Launch", "Lead Generation", "Engagement", "Sales", "Event Promotion", "Other"];
@@ -141,6 +151,10 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
   // Manual plan builder
   const [showManualBuilder, setShowManualBuilder] = useState(false);
 
+  // Retainer state (synced from brief columns, updated by RetainerPlansSection)
+  const [retainerStatus, setRetainerStatus] = useState<"active" | "discontinued">("active");
+  const [retainerUserId, setRetainerUserId] = useState<string>("");
+
   // Deliverable type chips
   const [selectedDeliverables, setSelectedDeliverables] = useState<string[]>([]);
   function toggleDeliverable(d: string) {
@@ -172,7 +186,12 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
         num_pages: String(d.num_pages || ""),
         num_deliverables: String(d.num_deliverables || ""),
         additional_notes: String(d.additional_notes || ""),
+        retainer_start_month: String(d.retainer_start_month || currentYM()),
+        retainer_pages_policy: (d.retainer_pages_policy as "can_repeat" | "cannot_repeat") || "can_repeat",
       });
+      setRetainerStatus((d.retainer_status as "active" | "discontinued") || "active");
+      // fetch userId for retainer section
+      supabase.auth.getUser().then(({ data }) => { if (data.user) setRetainerUserId(data.user.id); });
       // Restore deliverable chips from saved string
       const savedDels = String(d.deliverables || "").split(",").map((s: string) => s.trim()).filter((s: string) => DELIVERABLE_OPTIONS.includes(s));
       if (savedDels.length > 0) setSelectedDeliverables(savedDels);
@@ -261,6 +280,8 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
       status: "draft",
       created_by: user?.id,
       source: "distro",
+      retainer_start_month: brief.retainer_start_month || null,
+      retainer_pages_policy: brief.retainer_pages_policy || "can_repeat",
     };
     if (existingId) {
       const { data } = await supabase.from("client_briefs").update(record).eq("id", existingId).select().single();
@@ -309,7 +330,13 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
 
       setPlanRows(plan); setShowPlan(true);
       const id = await saveToCRM(plan, narrative, crmId || undefined);
-      setCrmId(id); setSaveMsg(`✓ Auto-saved to Client CRM · ${margin}% margin applied`);
+      setCrmId(id);
+      // ensure userId is set for RetainerPlansSection
+      if (!retainerUserId) {
+        const { data } = await supabase.auth.getUser();
+        if (data.user) setRetainerUserId(data.user.id);
+      }
+      setSaveMsg(`✓ Auto-saved to Client CRM · ${margin}% margin applied`);
     } catch { setError("Unexpected error. Check your connection."); }
     finally { setGeneratingPlan(false); }
   }
@@ -559,8 +586,48 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
             </div>
           </div>
 
+          {brief.engagement_model === "retainer" && (
+            <div className="col-span-2">
+              <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 space-y-3">
+                <p className="text-xs font-semibold text-violet-800 flex items-center gap-1.5">
+                  🔁 Retainer Settings
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Retainer Start Month</label>
+                    <input
+                      type="month"
+                      value={brief.retainer_start_month}
+                      onChange={e => sb("retainer_start_month", e.target.value)}
+                      disabled={approved}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:bg-slate-50" />
+                    <p className="text-xs text-slate-400 mt-0.5">First month the retainer goes live</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">Page / Handle Policy</label>
+                    <div className="flex gap-2">
+                      {([
+                        { v: "can_repeat" as const, l: "🔁 Can repeat pages", desc: "Include previous months' pages" },
+                        { v: "cannot_repeat" as const, l: "🆕 New pages only", desc: "Exclude previously used handles" },
+                      ]).map(({ v, l, desc }) => (
+                        <button key={v} type="button" disabled={approved}
+                          onClick={() => sb("retainer_pages_policy", v)}
+                          className={`flex-1 text-left px-3 py-2 rounded-lg border-2 transition-all text-xs disabled:opacity-60 ${brief.retainer_pages_policy === v ? "border-violet-500 bg-violet-100 text-violet-800" : "border-slate-200 text-slate-600 hover:border-violet-300"}`}>
+                          <p className="font-semibold">{l}</p>
+                          <p className="text-slate-400 mt-0.5">{desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Total Budget (₹)</label>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Total Budget (₹)
+              {brief.engagement_model === "retainer" && <span className="text-violet-600 ml-1">(per month)</span>}
+            </label>
             <input type="number" value={brief.total_budget} onChange={e => sb("total_budget", e.target.value)} disabled={approved}
               placeholder="e.g. 5000000"
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
@@ -1261,6 +1328,26 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Retainer Monthly Plans ──────────────────────────────────────── */}
+      {brief.engagement_model === "retainer" && crmId && brief.retainer_start_month && (
+        <RetainerPlansSection
+          briefId={crmId}
+          brandName={brief.brand_name || "Retainer Client"}
+          pagesPolicy={brief.retainer_pages_policy}
+          retainerStatus={retainerStatus}
+          startMonth={brief.retainer_start_month}
+          brief={brief as unknown as Record<string, unknown>}
+          userId={retainerUserId}
+          onRetainerStatusChange={setRetainerStatus}
+          onPolicyChange={p => sb("retainer_pages_policy", p)}
+        />
+      )}
+      {brief.engagement_model === "retainer" && crmId && !brief.retainer_start_month && (
+        <div className="bg-violet-50 border border-violet-200 rounded-2xl p-5 text-sm text-violet-700">
+          Set a <strong>Retainer Start Month</strong> above and save the brief to manage monthly plans.
         </div>
       )}
 
