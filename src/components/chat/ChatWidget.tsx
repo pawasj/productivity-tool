@@ -42,6 +42,7 @@ export default function ChatWidget() {
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [groupName, setGroupName] = useState("");
   const [totalUnread, setTotalUnread] = useState(0);
+  const [sendError, setSendError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Refs so realtime callbacks always see current values without re-subscribing
@@ -207,6 +208,7 @@ export default function ChatWidget() {
     const content = newMsg.trim();
     if (!content || !activeConvId || !currentUser || sending) return;
     setSending(true);
+    setSendError("");
     setNewMsg("");
 
     // Optimistic: add immediately so sender sees it at once
@@ -221,28 +223,34 @@ export default function ChatWidget() {
     };
     setMessages(prev => [...prev, optimistic]);
 
-    const { data, error } = await supabase.from("chat_messages").insert({
+    // Insert without .single() — avoids PGRST116 when RLS blocks the RETURNING select
+    const { data: rows, error } = await supabase.from("chat_messages").insert({
       conversation_id: activeConvId, sender_id: currentUser.id, content,
-    }).select().single();
+    }).select();
 
-    if (error || !data) {
-      // Rollback optimistic message on failure
+    if (error) {
       setMessages(prev => prev.filter(m => m.id !== tempId));
-      console.error("sendMessage error:", error?.message);
+      setNewMsg(content); // restore so user can retry
+      setSendError(`Failed to send: ${error.message}`);
       setSending(false);
       return;
     }
 
-    // Replace temp message with real one (realtime will dedup via real ID)
-    setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender: currentUser } as Message : m));
-    setConversations(prev =>
-      prev.map(c => c.id === activeConvId ? { ...c, last_message: content, last_message_at: data.created_at } : c)
-        .sort((a, b) => {
-          const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-          const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-          return tb - ta;
-        })
-    );
+    const saved = rows?.[0];
+    if (saved) {
+      // Replace temp with confirmed row
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...saved, sender: currentUser } as Message : m));
+      setConversations(prev =>
+        prev.map(c => c.id === activeConvId ? { ...c, last_message: content, last_message_at: saved.created_at } : c)
+          .sort((a, b) => {
+            const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+            const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+            return tb - ta;
+          })
+      );
+    }
+    // If rows is empty but no error, insert succeeded but SELECT was blocked by RLS —
+    // keep the optimistic message visible; realtime will confirm it for the receiver.
     setSending(false);
   }
 
@@ -427,8 +435,11 @@ export default function ChatWidget() {
                     })}
                     <div ref={messagesEndRef} />
                   </div>
-                  <div className="px-3 py-2 border-t border-slate-100">
-                    <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 border border-slate-200 focus-within:border-indigo-400 focus-within:bg-white transition-colors">
+                  <div className="px-3 pt-1 border-t border-slate-100">
+                    {sendError && (
+                      <p className="text-[11px] text-rose-500 px-1 py-1">{sendError}</p>
+                    )}
+                    <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 border border-slate-200 focus-within:border-indigo-400 focus-within:bg-white transition-colors mb-2">
                       <input
                         value={newMsg}
                         onChange={e => setNewMsg(e.target.value)}
