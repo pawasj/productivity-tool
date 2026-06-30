@@ -50,6 +50,9 @@ export default function ChatWidget() {
   const allMembersRef = useRef<Profile[]>([]);
   const activeConvIdRef = useRef<string | null>(null);
   const conversationsRef = useRef<Conversation[]>([]);
+  // Track per-conversation message channel to rebuild only when IDs change
+  const msgChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const subscribedConvIdsRef = useRef<string>("");
 
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { allMembersRef.current = allMembers; }, [allMembers]);
@@ -130,61 +133,84 @@ export default function ChatWidget() {
     init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Global realtime: one channel for everything ──────────────────────────
+  // ── Global channel: only chat_members INSERT (to detect new conversations) ──
   useEffect(() => {
-    // Wait until we have a user before subscribing
     if (!currentUser) return;
     const uid = currentUser.id;
-
     const channel = supabase
-      .channel(`chat:global:${uid}`)
-      // New message in ANY conversation
-      .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "chat_messages",
-      }, payload => {
-        const msg = payload.new as Message;
-        const members = allMembersRef.current;
-
-        // If this message belongs to the active conversation, append it
-        if (msg.conversation_id === activeConvIdRef.current) {
-          setMessages(prev => {
-            if (prev.some(m => m.id === msg.id)) return prev; // dedup
-            return [...prev, { ...msg, sender: members.find(m => m.id === msg.sender_id) }];
-          });
-        }
-
-        // Always update the conversation list's last message + unread count
-        setConversations(prev => {
-          const exists = prev.find(c => c.id === msg.conversation_id);
-          if (!exists) return prev; // not a conversation we know about yet
-          const updated = prev.map(c =>
-            c.id === msg.conversation_id
-              ? { ...c, last_message: msg.content, last_message_at: msg.created_at }
-              : c
-          ).sort((a, b) => {
-            const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-            const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-            return tb - ta;
-          });
-          // Bump unread count when not looking at that conversation
-          if (msg.conversation_id !== activeConvIdRef.current && msg.sender_id !== uid) {
-            setTotalUnread(n => n + 1);
-          }
-          return updated;
-        });
-      })
-      // New chat_members row for this user = someone started a conversation with them
+      .channel(`chat:members:${uid}`)
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "chat_members",
         filter: `user_id=eq.${uid}`,
-      }, () => {
-        // Reload conversation list to pick up the new one
-        loadConversations();
-      })
+      }, () => { loadConversations(); })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [currentUser, loadConversations]);
+
+  // ── Per-conversation message subscriptions — rebuilt when conv IDs change ──
+  useEffect(() => {
+    if (!currentUser || conversations.length === 0) return;
+    const uid = currentUser.id;
+
+    // Only rebuild if the set of conversation IDs has actually changed
+    const idsJson = JSON.stringify(conversations.map(c => c.id).sort());
+    if (idsJson === subscribedConvIdsRef.current) return;
+    subscribedConvIdsRef.current = idsJson;
+
+    if (msgChannelRef.current) {
+      supabase.removeChannel(msgChannelRef.current);
+      msgChannelRef.current = null;
+    }
+
+    const handleNewMessage = (payload: { new: Record<string, unknown> }) => {
+      const msg = payload.new as unknown as Message;
+      const members = allMembersRef.current;
+
+      // Add to message list if receiver has this conversation open
+      if (msg.conversation_id === activeConvIdRef.current) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === msg.id)) return prev;
+          return [...prev, { ...msg, sender: members.find(m => m.id === msg.sender_id) }];
+        });
+      }
+
+      // Update conversation list preview
+      setConversations(prev => {
+        const updated = prev.map(c =>
+          c.id === msg.conversation_id
+            ? { ...c, last_message: msg.content, last_message_at: msg.created_at }
+            : c
+        ).sort((a, b) => {
+          const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+          const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+          return tb - ta;
+        });
+        if (msg.conversation_id !== activeConvIdRef.current && msg.sender_id !== uid) {
+          setTotalUnread(n => n + 1);
+        }
+        return updated;
+      });
+    };
+
+    // One channel, one listener per conversation (filtered) — most reliable with RLS
+    let ch = supabase.channel(`chat:msgs:${uid}`);
+    for (const conv of conversations) {
+      ch = ch.on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "chat_messages",
+        filter: `conversation_id=eq.${conv.id}`,
+      }, handleNewMessage);
+    }
+    ch.subscribe();
+    msgChannelRef.current = ch;
+
+    return () => {
+      if (msgChannelRef.current) {
+        supabase.removeChannel(msgChannelRef.current);
+        msgChannelRef.current = null;
+        subscribedConvIdsRef.current = "";
+      }
+    };
+  }, [conversations, currentUser]);
 
   // ── Scroll to bottom when messages change ────────────────────────────────
   useEffect(() => {
