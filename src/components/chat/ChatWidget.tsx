@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase";
 import { MessageSquare, X, Minus, Send, Plus, Search, Users, ChevronLeft } from "lucide-react";
 import type { Profile } from "@/lib/types";
@@ -12,6 +12,7 @@ interface Conversation {
   members: Profile[];
   last_message?: string;
   last_message_at?: string;
+  unread?: number;
 }
 
 interface Message {
@@ -22,6 +23,9 @@ interface Message {
   created_at: string;
   sender?: Profile;
 }
+
+// Stable singleton — never recreated across renders
+const supabase = createClient();
 
 export default function ChatWidget() {
   const [open, setOpen] = useState(false);
@@ -37,85 +41,51 @@ export default function ChatWidget() {
   const [searchMembers, setSearchMembers] = useState("");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [groupName, setGroupName] = useState("");
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [totalUnread, setTotalUnread] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
 
-  useEffect(() => {
-    async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const [{ data: profile }, { data: members }] = await Promise.all([
-        supabase.from("profiles").select("*").eq("id", user.id).single(),
-        supabase.from("profiles").select("*").order("full_name"),
-      ]);
-      const profileData = profile as Profile | null;
-      const membersData = (members || []) as Profile[];
-      if (profileData) setCurrentUser(profileData);
-      setAllMembers(membersData);
-      // Load conversations only after BOTH user and members are ready
-      if (profileData) await loadConversationsWith(profileData, membersData);
-    }
-    init();
-  }, []);
+  // Refs so realtime callbacks always see current values without re-subscribing
+  const currentUserRef = useRef<Profile | null>(null);
+  const allMembersRef = useRef<Profile[]>([]);
+  const activeConvIdRef = useRef<string | null>(null);
+  const conversationsRef = useRef<Conversation[]>([]);
 
-  // Reload conversations when a new chat_members row appears for the current user
-  // (i.e. someone starts a new conversation with this user)
-  useEffect(() => {
-    if (!currentUser) return;
-    const channel = supabase
-      .channel(`widget:memberships:${currentUser.id}`)
-      .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "chat_members",
-        filter: `user_id=eq.${currentUser.id}`,
-      }, () => {
-        loadConversationsWith(currentUser, allMembers);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [currentUser, allMembers]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+  useEffect(() => { allMembersRef.current = allMembers; }, [allMembers]);
+  useEffect(() => { activeConvIdRef.current = activeConvId; }, [activeConvId]);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
 
-  useEffect(() => {
-    if (!activeConvId) return;
-    loadMessages(activeConvId);
-    const channel = supabase
-      .channel(`widget:chat:${activeConvId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages", filter: `conversation_id=eq.${activeConvId}` }, payload => {
-        const msg = payload.new as Message;
-        setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, {
-          ...msg,
-          sender: allMembers.find(m => m.id === msg.sender_id),
-        }]);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [activeConvId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Load conversations ────────────────────────────────────────────────────
+  const loadConversations = useCallback(async () => {
+    const user = currentUserRef.current;
+    const members = allMembersRef.current;
+    if (!user || !members.length) return;
 
-  useEffect(() => {
-    if (open && !minimized) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, open, minimized]);
-
-  async function loadConversationsWith(user: Profile, members: Profile[]) {
-    const { data: memberRows, error: mrErr } = await supabase
+    const { data: memberRows } = await supabase
       .from("chat_members").select("conversation_id").eq("user_id", user.id);
-    if (mrErr) { console.error("chat_members read error:", mrErr.message); return; }
     if (!memberRows?.length) return;
+
     const ids = memberRows.map(r => r.conversation_id);
     const { data: convRows } = await supabase
-      .from("chat_conversations").select("*").in("id", ids).order("created_at", { ascending: false });
+      .from("chat_conversations").select("*").in("id", ids);
     if (!convRows) return;
 
     const convos: Conversation[] = await Promise.all(convRows.map(async c => {
-      const { data: mData } = await supabase.from("chat_members").select("user_id").eq("conversation_id", c.id);
-      const memberIds = (mData || []).map(m => m.user_id);
+      const { data: mData } = await supabase
+        .from("chat_members").select("user_id").eq("conversation_id", c.id);
+      const memberIds = (mData || []).map((m: { user_id: string }) => m.user_id);
       const convMembers = members.filter(m => memberIds.includes(m.id));
-      const { data: lastMsg } = await supabase.from("chat_messages")
-        .select("content, created_at").eq("conversation_id", c.id)
-        .order("created_at", { ascending: false }).limit(1).single();
+      const { data: lastMsgRows } = await supabase
+        .from("chat_messages").select("content, created_at")
+        .eq("conversation_id", c.id).order("created_at", { ascending: false }).limit(1);
+      const lastMsg = lastMsgRows?.[0];
       const displayName = c.is_group
         ? (c.name || convMembers.filter(m => m.id !== user.id).map(m => m.full_name?.split(" ")[0]).join(", "))
         : convMembers.find(m => m.id !== user.id)?.full_name || "Chat";
-      return { id: c.id, name: displayName, is_group: c.is_group, members: convMembers, last_message: lastMsg?.content, last_message_at: lastMsg?.created_at };
+      return {
+        id: c.id, name: displayName, is_group: c.is_group, members: convMembers,
+        last_message: lastMsg?.content, last_message_at: lastMsg?.created_at,
+      };
     }));
 
     const sorted = convos.sort((a, b) => {
@@ -124,95 +94,206 @@ export default function ChatWidget() {
       return tb - ta;
     });
     setConversations(sorted);
-    if (!open) setUnreadCount(sorted.filter(c => c.last_message).length);
-  }
+  }, []);
 
-  async function loadMessages(convId: string) {
-    const { data } = await supabase.from("chat_messages").select("*").eq("conversation_id", convId).order("created_at", { ascending: true });
-    setMessages((data || []).map(m => ({ ...m, sender: allMembers.find(u => u.id === m.sender_id) })) as Message[]);
-    if (currentUser) {
-      await supabase.from("chat_members").update({ last_read_at: new Date().toISOString() })
-        .eq("conversation_id", convId).eq("user_id", currentUser.id);
+  // ── Load messages for active conversation ────────────────────────────────
+  const loadMessages = useCallback(async (convId: string) => {
+    const { data } = await supabase
+      .from("chat_messages").select("*").eq("conversation_id", convId)
+      .order("created_at", { ascending: true });
+    const members = allMembersRef.current;
+    setMessages((data || []).map(m => ({
+      ...m, sender: members.find(u => u.id === m.sender_id),
+    })) as Message[]);
+  }, []);
+
+  // ── Init: load user + members, then conversations ────────────────────────
+  useEffect(() => {
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const [{ data: profile }, { data: members }] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).single(),
+        supabase.from("profiles").select("*").order("full_name"),
+      ]);
+      const p = profile as Profile | null;
+      const ms = (members || []) as Profile[];
+      if (p) { setCurrentUser(p); currentUserRef.current = p; }
+      setAllMembers(ms); allMembersRef.current = ms;
+      if (p) {
+        currentUserRef.current = p;
+        allMembersRef.current = ms;
+        await loadConversations();
+      }
     }
+    init();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Global realtime: one channel for everything ──────────────────────────
+  useEffect(() => {
+    // Wait until we have a user before subscribing
+    if (!currentUser) return;
+    const uid = currentUser.id;
+
+    const channel = supabase
+      .channel(`chat:global:${uid}`)
+      // New message in ANY conversation
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "chat_messages",
+      }, payload => {
+        const msg = payload.new as Message;
+        const members = allMembersRef.current;
+
+        // If this message belongs to the active conversation, append it
+        if (msg.conversation_id === activeConvIdRef.current) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === msg.id)) return prev; // dedup
+            return [...prev, { ...msg, sender: members.find(m => m.id === msg.sender_id) }];
+          });
+        }
+
+        // Always update the conversation list's last message + unread count
+        setConversations(prev => {
+          const exists = prev.find(c => c.id === msg.conversation_id);
+          if (!exists) return prev; // not a conversation we know about yet
+          const updated = prev.map(c =>
+            c.id === msg.conversation_id
+              ? { ...c, last_message: msg.content, last_message_at: msg.created_at }
+              : c
+          ).sort((a, b) => {
+            const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+            const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+            return tb - ta;
+          });
+          // Bump unread count when not looking at that conversation
+          if (msg.conversation_id !== activeConvIdRef.current && msg.sender_id !== uid) {
+            setTotalUnread(n => n + 1);
+          }
+          return updated;
+        });
+      })
+      // New chat_members row for this user = someone started a conversation with them
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "chat_members",
+        filter: `user_id=eq.${uid}`,
+      }, () => {
+        // Reload conversation list to pick up the new one
+        loadConversations();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [currentUser, loadConversations]);
+
+  // ── Scroll to bottom when messages change ────────────────────────────────
+  useEffect(() => {
+    if (open && !minimized) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, open, minimized]);
+
+  // ── Open a conversation ──────────────────────────────────────────────────
+  function openConv(id: string) {
+    setActiveConvId(id);
+    activeConvIdRef.current = id;
+    setView("chat");
+    setMessages([]);
+    loadMessages(id);
+    setTotalUnread(0);
   }
 
+  // ── Send a message ───────────────────────────────────────────────────────
   async function sendMessage() {
-    if (!newMsg.trim() || !activeConvId || !currentUser) return;
-    setSending(true);
     const content = newMsg.trim();
+    if (!content || !activeConvId || !currentUser || sending) return;
+    setSending(true);
     setNewMsg("");
-    const { data } = await supabase.from("chat_messages").insert({
+
+    // Optimistic: add immediately so sender sees it at once
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: Message = {
+      id: tempId,
+      conversation_id: activeConvId,
+      sender_id: currentUser.id,
+      content,
+      created_at: new Date().toISOString(),
+      sender: currentUser,
+    };
+    setMessages(prev => [...prev, optimistic]);
+
+    const { data, error } = await supabase.from("chat_messages").insert({
       conversation_id: activeConvId, sender_id: currentUser.id, content,
     }).select().single();
-    if (data) {
-      setMessages(prev => [...prev, { ...data, sender: currentUser } as Message]);
-      setConversations(prev => prev.map(c => c.id === activeConvId ? { ...c, last_message: content, last_message_at: data.created_at } : c));
+
+    if (error || !data) {
+      // Rollback optimistic message on failure
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      console.error("sendMessage error:", error?.message);
+      setSending(false);
+      return;
     }
+
+    // Replace temp message with real one (realtime will dedup via real ID)
+    setMessages(prev => prev.map(m => m.id === tempId ? { ...data, sender: currentUser } as Message : m));
+    setConversations(prev =>
+      prev.map(c => c.id === activeConvId ? { ...c, last_message: content, last_message_at: data.created_at } : c)
+        .sort((a, b) => {
+          const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+          const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+          return tb - ta;
+        })
+    );
     setSending(false);
   }
 
+  // ── Start a new conversation ─────────────────────────────────────────────
   async function startConversation() {
     if (!selectedMembers.length || !currentUser) return;
     const isGroup = selectedMembers.length > 1;
     const allParticipants = [...new Set([currentUser.id, ...selectedMembers])];
+
     if (!isGroup) {
       const other = selectedMembers[0];
-      const existing = conversations.find(c => !c.is_group && c.members.some(m => m.id === other) && c.members.some(m => m.id === currentUser.id));
-      if (existing) { setActiveConvId(existing.id); setView("chat"); setSelectedMembers([]); return; }
+      const existing = conversations.find(c =>
+        !c.is_group &&
+        c.members.some(m => m.id === other) &&
+        c.members.some(m => m.id === currentUser.id)
+      );
+      if (existing) {
+        openConv(existing.id);
+        setSelectedMembers([]);
+        return;
+      }
     }
-    // Generate ID client-side so we can add members before any SELECT round-trip.
-    // (The chat_conversations SELECT policy requires membership, but members haven't
-    //  been inserted yet when we .select() the new row — so we avoid that SELECT entirely.)
+
     const convId = crypto.randomUUID();
     const { error: convErr } = await supabase.from("chat_conversations").insert({
-      id: convId,
-      name: isGroup ? (groupName.trim() || null) : null,
-      is_group: isGroup,
-      created_by: currentUser.id,
+      id: convId, name: isGroup ? (groupName.trim() || null) : null,
+      is_group: isGroup, created_by: currentUser.id,
     });
-    if (convErr) {
-      console.error("Failed to create conversation:", convErr.message);
-      alert("Could not start chat: " + convErr.message);
-      return;
-    }
+    if (convErr) { alert("Could not start chat: " + convErr.message); return; }
+
     const { error: membersErr } = await supabase.from("chat_members").insert(
       allParticipants.map(uid => ({ conversation_id: convId, user_id: uid }))
     );
-    if (membersErr) {
-      console.error("Failed to add members:", membersErr.message);
-      alert("Chat created but members could not be added: " + membersErr.message);
-      return;
-    }
+    if (membersErr) { alert("Chat created but members could not be added: " + membersErr.message); return; }
+
     const convMembers = allMembers.filter(m => allParticipants.includes(m.id));
     const displayName = isGroup
       ? (groupName.trim() || convMembers.filter(m => m.id !== currentUser.id).map(m => m.full_name?.split(" ")[0]).join(", "))
       : convMembers.find(m => m.id !== currentUser.id)?.full_name || "Chat";
     const newConv: Conversation = { id: convId, name: displayName, is_group: isGroup, members: convMembers };
     setConversations(prev => [newConv, ...prev]);
-    setActiveConvId(convId);
-    setView("chat");
+    openConv(convId);
     setSelectedMembers([]);
     setGroupName("");
-  }
-
-  function openConv(id: string) {
-    setActiveConvId(id);
-    setView("chat");
-    setUnreadCount(0);
   }
 
   function toggleOpen() {
     setOpen(o => !o);
     setMinimized(false);
-    if (!open) setUnreadCount(0);
+    if (!open) setTotalUnread(0);
   }
-
-  const activeConv = conversations.find(c => c.id === activeConvId);
-  const filteredMembers = allMembers.filter(m =>
-    m.id !== currentUser?.id &&
-    (m.full_name?.toLowerCase().includes(searchMembers.toLowerCase()) ||
-      m.designation?.toLowerCase().includes(searchMembers.toLowerCase()))
-  );
 
   function timeLabel(iso?: string) {
     if (!iso) return "";
@@ -223,6 +304,13 @@ export default function ChatWidget() {
     return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
   }
 
+  const activeConv = conversations.find(c => c.id === activeConvId);
+  const filteredMembers = allMembers.filter(m =>
+    m.id !== currentUser?.id &&
+    (m.full_name?.toLowerCase().includes(searchMembers.toLowerCase()) ||
+      m.designation?.toLowerCase().includes(searchMembers.toLowerCase()))
+  );
+
   return (
     <>
       {/* Floating button */}
@@ -232,22 +320,21 @@ export default function ChatWidget() {
         title="Messages"
       >
         <MessageSquare className="w-6 h-6" />
-        {unreadCount > 0 && !open && (
+        {totalUnread > 0 && !open && (
           <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-            {unreadCount > 9 ? "9+" : unreadCount}
+            {totalUnread > 9 ? "9+" : totalUnread}
           </span>
         )}
       </button>
 
       {/* Panel */}
       {open && (
-        <div
-          className={`fixed bottom-24 right-6 z-50 w-[380px] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden transition-all duration-200 ${minimized ? "h-14" : "h-[520px]"}`}
-        >
-          {/* Panel header */}
+        <div className={`fixed bottom-24 right-6 z-50 w-[380px] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden transition-all duration-200 ${minimized ? "h-14" : "h-[520px]"}`}>
+          {/* Header */}
           <div className="flex items-center gap-2 px-4 py-3 bg-indigo-600 text-white shrink-0">
             {view === "chat" && (
-              <button onClick={() => setView("list")} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+              <button onClick={() => { setView("list"); setActiveConvId(null); activeConvIdRef.current = null; }}
+                className="p-1 hover:bg-white/20 rounded-lg transition-colors">
                 <ChevronLeft className="w-4 h-4" />
               </button>
             )}
@@ -255,7 +342,7 @@ export default function ChatWidget() {
             <span className="flex-1 font-semibold text-sm">
               {view === "chat" ? (activeConv?.name || "Chat") : view === "new" ? "New Message" : "Messages"}
             </span>
-            <button onClick={() => setMinimized(m => !m)} className="p-1 hover:bg-white/20 rounded-lg transition-colors" title={minimized ? "Expand" : "Minimize"}>
+            <button onClick={() => setMinimized(m => !m)} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
               <Minus className="w-4 h-4" />
             </button>
             <button onClick={() => setOpen(false)} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
@@ -311,20 +398,28 @@ export default function ChatWidget() {
               {view === "chat" && activeConvId && (
                 <div className="flex flex-col flex-1 overflow-hidden">
                   <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+                    {messages.length === 0 && (
+                      <div className="flex items-center justify-center h-full text-xs text-slate-400">
+                        No messages yet — say hi!
+                      </div>
+                    )}
                     {messages.map((msg, i) => {
                       const isMine = msg.sender_id === currentUser?.id;
                       const showName = !isMine && (i === 0 || messages[i - 1].sender_id !== msg.sender_id);
+                      const isTemp = msg.id.startsWith("temp-");
                       return (
                         <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                           <div className={`max-w-[75%] flex flex-col ${isMine ? "items-end" : "items-start"}`}>
                             {showName && (
-                              <p className="text-[10px] text-slate-400 font-medium mb-0.5 px-1">{msg.sender?.full_name || "Unknown"}</p>
+                              <p className="text-[10px] text-slate-400 font-medium mb-0.5 px-1">
+                                {msg.sender?.full_name || "Unknown"}
+                              </p>
                             )}
-                            <div className={`px-3 py-2 rounded-2xl text-sm ${isMine ? "bg-indigo-600 text-white rounded-br-sm" : "bg-slate-100 text-slate-800 rounded-bl-sm"}`}>
+                            <div className={`px-3 py-2 rounded-2xl text-sm ${isMine ? "bg-indigo-600 text-white rounded-br-sm" : "bg-slate-100 text-slate-800 rounded-bl-sm"} ${isTemp ? "opacity-70" : ""}`}>
                               {msg.content}
                             </div>
                             <p className="text-[10px] text-slate-300 mt-0.5 px-1">
-                              {new Date(msg.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                              {isTemp ? "sending…" : new Date(msg.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
                             </p>
                           </div>
                         </div>
@@ -337,7 +432,7 @@ export default function ChatWidget() {
                       <input
                         value={newMsg}
                         onChange={e => setNewMsg(e.target.value)}
-                        onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                         placeholder="Type a message…"
                         className="flex-1 bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
                       />
@@ -360,7 +455,8 @@ export default function ChatWidget() {
                   )}
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                    <input value={searchMembers} onChange={e => setSearchMembers(e.target.value)} placeholder="Search team members…"
+                    <input value={searchMembers} onChange={e => setSearchMembers(e.target.value)}
+                      placeholder="Search team members…"
                       className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                   </div>
                   {selectedMembers.length > 0 && (
@@ -380,7 +476,9 @@ export default function ChatWidget() {
                     {filteredMembers.map(m => (
                       <label key={m.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
                         <input type="checkbox" checked={selectedMembers.includes(m.id)}
-                          onChange={() => setSelectedMembers(prev => prev.includes(m.id) ? prev.filter(x => x !== m.id) : [...prev, m.id])}
+                          onChange={() => setSelectedMembers(prev =>
+                            prev.includes(m.id) ? prev.filter(x => x !== m.id) : [...prev, m.id]
+                          )}
                           className="accent-indigo-600 w-3.5 h-3.5" />
                         <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-xs shrink-0">
                           {m.full_name?.charAt(0)?.toUpperCase()}
@@ -393,7 +491,10 @@ export default function ChatWidget() {
                     ))}
                   </div>
                   <div className="flex gap-2 pt-1">
-                    <button onClick={() => setView("list")} className="flex-1 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200">Cancel</button>
+                    <button onClick={() => setView("list")}
+                      className="flex-1 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200">
+                      Cancel
+                    </button>
                     <button onClick={startConversation} disabled={selectedMembers.length === 0}
                       className="flex-1 py-2 text-sm bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
                       {selectedMembers.length > 1 ? "Create Group" : "Start Chat"}
