@@ -37,6 +37,9 @@ interface RosterPerson {
   default_rate?: number;
 }
 
+// Stable singleton — created once, not on every render
+const supabase = createClient();
+
 function fmt(n: number) { return n ? `₹${n.toLocaleString("en-IN")}` : "—"; }
 
 const CAT_STYLES: Record<string, string> = {
@@ -45,11 +48,13 @@ const CAT_STYLES: Record<string, string> = {
   freelancer: "bg-amber-100 text-amber-700",
 };
 
-export default function SalaryClient({ userId, verticals, members, vendors }: Props) {
+export default function SalaryClient({ userId, verticals, members: initialMembers, vendors: initialVendors }: Props) {
   const now = new Date();
   const [month, setMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [entries, setEntries] = useState<SalaryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<Profile[]>(initialMembers);
+  const [vendors, setVendors] = useState<VendorRow[]>(initialVendors);
   // editing: key of the roster row being edited inline
   const [editing, setEditing] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState("");
@@ -57,7 +62,6 @@ export default function SalaryClient({ userId, verticals, members, vendors }: Pr
   const [editNotes, setEditNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const supabase = createClient();
 
   // Build roster from all three sources
   const roster: RosterPerson[] = [
@@ -65,7 +69,7 @@ export default function SalaryClient({ userId, verticals, members, vendors }: Pr
       key: `emp-${m.id}`,
       source_id: m.id,
       name: m.full_name || "Unknown",
-      role: m.designation || m.role || "Employee",
+      role: m.designation || (m.role === "admin" ? "Admin" : "Employee"),
       department: m.department,
       category: "employee" as const,
     })),
@@ -87,15 +91,33 @@ export default function SalaryClient({ userId, verticals, members, vendors }: Pr
     })),
   ];
 
+  // Client-side fallback: re-fetch roster if server props were empty
+  useEffect(() => {
+    async function fetchRoster() {
+      if (initialMembers.length === 0) {
+        const { data } = await supabase.from("profiles").select("id, full_name, designation, department, role").order("full_name");
+        if (data?.length) setMembers(data as Profile[]);
+      }
+      if (initialVendors.length === 0) {
+        const { data } = await supabase.from("vendors").select("id, name, type, service_type, rate").order("name");
+        if (data?.length) setVendors(data as VendorRow[]);
+      }
+    }
+    fetchRoster();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("salary_entries")
-      .select("*")
-      .eq("month", month)
-      .order("member_name");
-    setEntries((data || []) as SalaryEntry[]);
-    setLoading(false);
+    try {
+      const { data } = await supabase
+        .from("salary_entries")
+        .select("*")
+        .eq("month", month)
+        .order("member_name");
+      setEntries((data || []) as SalaryEntry[]);
+    } finally {
+      setLoading(false);
+    }
   }, [month]);
 
   useEffect(() => { load(); }, [load]);

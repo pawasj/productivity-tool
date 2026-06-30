@@ -31,6 +31,18 @@ const STATUS_META: Record<string, { label: string; color: string; dot: string; r
   completed:   { label: "Completed",   color: "bg-violet-100 text-violet-700",  dot: "bg-violet-500", revenueStage: true },
 };
 
+// Combined filter list — covers both lead statuses and brief statuses
+const ALL_FILTER_STATUSES = [
+  { value: "draft",       label: "Draft" },
+  { value: "pitched",     label: "Pitched" },
+  { value: "planning",    label: "Planning" },
+  { value: "negotiation", label: "Negotiation" },
+  { value: "approved",    label: "Approved" },
+  { value: "live",        label: "Live" },
+  { value: "completed",   label: "Completed" },
+  { value: "lost",        label: "Lost" },
+];
+
 const BRIEF_STATUSES = ["draft", "planning", "approved", "live", "completed", "lost"] as const;
 const BRIEF_STATUS_META: Record<string, { label: string; color: string }> = {
   draft:     { label: "Draft",     color: "bg-slate-100 text-slate-600" },
@@ -660,7 +672,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
           className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600">
           <option value="">All Statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+          {ALL_FILTER_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
 
         <select value={filterVertical} onChange={e => setFilterVertical(e.target.value)}
