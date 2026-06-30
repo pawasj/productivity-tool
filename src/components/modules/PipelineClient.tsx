@@ -21,37 +21,22 @@ interface Props {
   userId: string;
 }
 
-const STATUSES = ["draft", "pitched", "negotiation", "approved", "lost", "completed"] as const;
+// Single unified status vocabulary — used by filter dropdown, lead rows, and brief rows
+const STATUSES = ["draft","pitched","planning","negotiation","approved","live","completed","lost"] as const;
 const STATUS_META: Record<string, { label: string; color: string; dot: string; revenueStage?: boolean }> = {
   draft:       { label: "Draft",       color: "bg-slate-100 text-slate-500",    dot: "bg-slate-300" },
   pitched:     { label: "Pitched",     color: "bg-blue-100 text-blue-700",      dot: "bg-blue-400" },
+  planning:    { label: "Planning",    color: "bg-cyan-100 text-cyan-700",       dot: "bg-cyan-400" },
   negotiation: { label: "Negotiation", color: "bg-amber-100 text-amber-700",    dot: "bg-amber-400" },
   approved:    { label: "Approved",    color: "bg-emerald-100 text-emerald-700",dot: "bg-emerald-500", revenueStage: true },
+  live:        { label: "Live",        color: "bg-teal-100 text-teal-700",       dot: "bg-teal-500",   revenueStage: true },
   lost:        { label: "Lost",        color: "bg-red-100 text-red-600",        dot: "bg-red-400" },
   completed:   { label: "Completed",   color: "bg-violet-100 text-violet-700",  dot: "bg-violet-500", revenueStage: true },
 };
 
-// Combined filter list — covers both lead statuses and brief statuses
-const ALL_FILTER_STATUSES = [
-  { value: "draft",       label: "Draft" },
-  { value: "pitched",     label: "Pitched" },
-  { value: "planning",    label: "Planning" },
-  { value: "negotiation", label: "Negotiation" },
-  { value: "approved",    label: "Approved" },
-  { value: "live",        label: "Live" },
-  { value: "completed",   label: "Completed" },
-  { value: "lost",        label: "Lost" },
-];
+// Alias kept for the filter dropdown (same data, label/value shape)
+const ALL_FILTER_STATUSES = STATUSES.map(s => ({ value: s, label: STATUS_META[s].label }));
 
-const BRIEF_STATUSES = ["draft", "planning", "approved", "live", "completed", "lost"] as const;
-const BRIEF_STATUS_META: Record<string, { label: string; color: string }> = {
-  draft:     { label: "Draft",     color: "bg-slate-100 text-slate-600" },
-  planning:  { label: "Planning",  color: "bg-blue-100 text-blue-700" },
-  approved:  { label: "Approved",  color: "bg-violet-100 text-violet-700" },
-  live:      { label: "Live",      color: "bg-amber-100 text-amber-700" },
-  completed: { label: "Completed", color: "bg-emerald-100 text-emerald-700" },
-  lost:      { label: "Lost",      color: "bg-red-100 text-red-600" },
-};
 
 type FormState = {
   company_name: string; contact_name: string; contact_email: string; contact_phone: string;
@@ -889,7 +874,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                   const brief = row.data;
                   const creator = (brief.creator as Record<string, unknown>) || null;
                   const briefStatus = String(brief.status || "draft");
-                  const statusMeta = BRIEF_STATUS_META[briefStatus] || BRIEF_STATUS_META.draft;
+                  const statusMeta = STATUS_META[briefStatus] || STATUS_META.draft;
                   return (
                     <tr key={`brief-${brief.id}`} className="hover:bg-violet-50/20 transition-colors group">
                       <td className="px-4 py-3 sticky left-0 bg-white group-hover:bg-violet-50/20 z-10">
@@ -915,8 +900,8 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                       </td>
                       <td className="px-4 py-3">
                         <select value={briefStatus} onChange={e => updateBriefStatus(String(brief.id), e.target.value)}
-                          className={`text-xs px-2 py-1 rounded-full font-medium border-0 cursor-pointer focus:outline-none ${statusMeta.color}`}>
-                          {BRIEF_STATUSES.map(s => <option key={s} value={s}>{BRIEF_STATUS_META[s]?.label || s}</option>)}
+                          className={`text-xs px-2 py-1 rounded-full font-medium border-0 cursor-pointer focus:outline-none ${STATUS_META[briefStatus]?.color || statusMeta.color}`}>
+                          {STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
                         </select>
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-600">
