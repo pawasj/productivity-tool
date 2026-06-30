@@ -42,12 +42,45 @@ function fmt(n?: number | null) {
   return String(n);
 }
 
+/** Strip currency symbols, commas, spaces → parse as number. Returns null if zero or unparseable. */
+function parseRate(raw: string | undefined): number | null {
+  if (!raw) return null;
+  // Remove ₹ $ € £ commas spaces then parse
+  const cleaned = raw.toString().replace(/[₹$€£,\s]/g, "").trim();
+  if (!cleaned) return null;
+  const n = parseFloat(cleaned);
+  return isNaN(n) || n === 0 ? null : Math.round(n);
+}
+
 function parseFollowers(s: string): number {
   if (!s) return 0;
-  const u = s.toString().trim().toUpperCase();
-  if (u.endsWith("M")) return Math.round(parseFloat(u) * 1000000);
-  if (u.endsWith("K")) return Math.round(parseFloat(u) * 1000);
-  return parseInt(u.replace(/[^0-9]/g, "")) || 0;
+  // Remove commas, currency symbols, spaces first
+  const clean = s.toString().replace(/[,₹$€£\s]/g, "").trim().toUpperCase();
+  if (clean.endsWith("M")) return Math.round(parseFloat(clean) * 1_000_000);
+  if (clean.endsWith("K")) return Math.round(parseFloat(clean) * 1_000);
+  const n = parseInt(clean.replace(/[^0-9]/g, "")) || 0;
+  return n;
+}
+
+const PLATFORM_MAP: Record<string, string> = {
+  instagram: "instagram", insta: "instagram", ig: "instagram",
+  youtube: "youtube", yt: "youtube", "youtube shorts": "youtube",
+  linkedin: "linkedin", li: "linkedin",
+  x: "x", twitter: "x", tw: "x",
+  reddit: "reddit",
+  newsletter: "newsletter", substack: "newsletter", email: "newsletter",
+  website: "website", blog: "website", web: "website",
+  other: "other",
+};
+
+function normalisePlatform(raw: string): string {
+  const key = raw.toString().toLowerCase().trim();
+  return PLATFORM_MAP[key] || key || "instagram";
+}
+
+function normaliseOwned(raw: string): boolean {
+  const v = raw.toString().toLowerCase().trim();
+  return ["owned", "yes", "true", "1", "y", "own", "✓", "x", "bcc"].includes(v);
 }
 
 const EMPTY = (type: "creator" | "page"): Partial<Influencer & { influencer_type: string }> => ({
@@ -140,26 +173,26 @@ export function InfluencerTable({ subtype }: Props) {
 
         let added = 0, updated = 0;
         for (const row of rows) {
-          const handle = (row["Handle Name"] || row["handle_name"] || row["Handle"] || "").trim();
+          const handle = (row["Handle Name"] || row["handle_name"] || row["Handle"] || row["Page Name"] || row["page_name"] || "").trim();
           if (!handle) continue;
-          const platform = (row["Platform"] || row["platform"] || "instagram").toLowerCase();
+          const platform = normalisePlatform(row["Platform"] || row["platform"] || "instagram");
           const record = {
             handle_name: handle,
-            channel_link: row["Channel link"] || row["Channel Link"] || row["channel_link"] || "",
-            category: row["Category"] || row["category"] || categories[0],
+            channel_link: (row["Channel link"] || row["Channel Link"] || row["channel_link"] || row["Link"] || row["URL"] || row["url"] || "").trim(),
+            category: (row["Category"] || row["category"] || row["Niche"] || row["niche"] || categories[0]).trim(),
             platform,
-            followers: parseFollowers(row["Followers"] || row["followers"] || "0"),
-            rate_post: parseFloat(row["Rate card of Post"] || row["rate_post"] || row["Post"] || "0") || null,
-            rate_story: parseFloat(row["Story"] || row["rate_story"] || "0") || null,
-            rate_combo: parseFloat(row["Combo"] || row["rate_combo"] || "0") || null,
-            rate_reel: parseFloat(row["Reel"] || row["rate_reel"] || "0") || null,
-            rate_carousel: parseFloat(row["Carousel"] || row["rate_carousel"] || "0") || null,
-            rate_collab_post: parseFloat(row["Collab Post"] || row["rate_collab_post"] || "0") || null,
-            contact_no: row["Contact No."] || row["contact_no"] || "",
-            person_name: row["Person Name"] || row["person_name"] || "",
-            location: row["Location"] || row["location"] || "",
-            state: row["State"] || row["state"] || "",
-            is_owned: (row["Status"] || row["status"] || "").toLowerCase().trim() === "owned",
+            followers: parseFollowers(row["Followers"] || row["followers"] || row["Followers Count"] || "0"),
+            rate_post:       parseRate(row["Rate card of Post"] || row["rate_post"]      || row["Post"]        || row["Post Rate"]),
+            rate_story:      parseRate(row["Story"]             || row["rate_story"]     || row["Story Rate"]),
+            rate_combo:      parseRate(row["Combo"]             || row["rate_combo"]     || row["Combo Rate"]),
+            rate_reel:       parseRate(row["Reel"]              || row["rate_reel"]      || row["Reel Rate"]),
+            rate_carousel:   parseRate(row["Carousel"]          || row["rate_carousel"]  || row["Carousel Rate"]),
+            rate_collab_post:parseRate(row["Collab Post"]       || row["rate_collab_post"]|| row["Collab"]     || row["Collab Rate"]),
+            contact_no: (row["Contact No."] || row["contact_no"] || row["Contact"] || row["Phone"] || row["phone"] || "").trim(),
+            person_name: (row["Person Name"] || row["person_name"] || row["Name"] || row["POC"] || "").trim(),
+            location: (row["Location"] || row["location"] || row["City"] || row["city"] || "").trim(),
+            state: (row["State"] || row["state"] || "").trim(),
+            is_owned: normaliseOwned(row["Status"] || row["status"] || row["Owned"] || row["owned"] || ""),
             influencer_type: subtype,
           };
           if (mode === "replace") {
