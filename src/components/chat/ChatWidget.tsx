@@ -59,6 +59,22 @@ export default function ChatWidget() {
     init();
   }, []);
 
+  // Reload conversations when a new chat_members row appears for the current user
+  // (i.e. someone starts a new conversation with this user)
+  useEffect(() => {
+    if (!currentUser) return;
+    const channel = supabase
+      .channel(`widget:memberships:${currentUser.id}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "chat_members",
+        filter: `user_id=eq.${currentUser.id}`,
+      }, () => {
+        loadConversationsWith(currentUser, allMembers);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [currentUser, allMembers]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!activeConvId) return;
     loadMessages(activeConvId);
@@ -73,7 +89,7 @@ export default function ChatWidget() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [activeConvId]);
+  }, [activeConvId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (open && !minimized) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
