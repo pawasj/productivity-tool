@@ -17,8 +17,9 @@ type ExtTodo = Todo & { assigned_to?: string[]; vertical?: Vertical; creator?: P
 
 const EMPTY_FORM = { title: "", description: "", priority: "medium" as const, due_date: "", vertical_id: "", assigned_to: [] as string[] };
 
-export default function TasksClient({ userId, verticals, members }: Props) {
+export default function TasksClient({ userId, verticals, members: initialMembers }: Props) {
   const [tasks, setTasks] = useState<ExtTodo[]>([]);
+  const [members, setMembers] = useState<Profile[]>(initialMembers);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -28,6 +29,16 @@ export default function TasksClient({ userId, verticals, members }: Props) {
   const [filterAssignee, setFilterAssignee] = useState("");
   const [showAssignPicker, setShowAssignPicker] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
+
+  // Always fetch members client-side — server props may be empty due to RLS
+  useEffect(() => {
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, designation, role")
+      .order("full_name")
+      .then(({ data }) => { if (data?.length) setMembers(data as Profile[]); });
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     // Fetch via API route (service role) so RLS doesn't hide other users' / verticals' tasks
