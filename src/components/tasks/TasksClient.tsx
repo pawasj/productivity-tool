@@ -30,12 +30,10 @@ export default function TasksClient({ userId, verticals, members: initialMembers
   const [showAssignPicker, setShowAssignPicker] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
 
-  // Always fetch members client-side — server props may be empty due to RLS
+  // Always fetch members via API route (service role) — browser client can't read profiles due to RLS
   useEffect(() => {
-    supabase
-      .from("profiles")
-      .select("id, full_name, email, designation, role")
-      .order("full_name")
+    fetch("/api/members")
+      .then(r => r.json())
       .then(({ data }) => { if (data?.length) setMembers(data as Profile[]); });
   }, []);
 
