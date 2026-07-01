@@ -36,7 +36,7 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PlatformSection({ p }: { p: SocialPlatformData }) {
+function PlatformSection({ p }: { p: SocialPlatformData & Record<string, unknown> }) {
   const metrics: { label: string; value: string }[] = [];
   if (p.followers !== undefined) metrics.push({ label: "Followers", value: fmtNum(p.followers) });
   if (p.new_followers !== undefined) metrics.push({ label: "New Followers", value: `+${fmtNum(p.new_followers)}` });
@@ -45,7 +45,14 @@ function PlatformSection({ p }: { p: SocialPlatformData }) {
   if (p.impressions !== undefined) metrics.push({ label: "Impressions", value: fmtNum(p.impressions) });
   if (p.engagements !== undefined) metrics.push({ label: "Engagements", value: fmtNum(p.engagements) });
   if (p.engagement_rate !== undefined) metrics.push({ label: "Eng. Rate", value: `${p.engagement_rate}%` });
+  if (p.likes !== undefined) metrics.push({ label: "Likes", value: fmtNum(p.likes as number) });
+  if (p.comments !== undefined) metrics.push({ label: "Comments", value: fmtNum(p.comments as number) });
+  if (p.shares !== undefined) metrics.push({ label: "Shares", value: fmtNum(p.shares as number) });
+  if (p.saves !== undefined) metrics.push({ label: "Saves", value: fmtNum(p.saves as number) });
   if (p.video_views !== undefined) metrics.push({ label: "Video Views", value: fmtNum(p.video_views) });
+  if (p.stories_views !== undefined) metrics.push({ label: "Stories Views", value: fmtNum(p.stories_views as number) });
+  if (p.profile_visits !== undefined) metrics.push({ label: "Profile Visits", value: fmtNum(p.profile_visits as number) });
+  if (p.link_clicks !== undefined) metrics.push({ label: "Link Clicks", value: fmtNum(p.link_clicks as number) });
   if (p.top_post_reach !== undefined) metrics.push({ label: "Top Post Reach", value: fmtNum(p.top_post_reach) });
 
   const platformColors: Record<string, string> = {

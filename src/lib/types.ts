@@ -415,14 +415,25 @@ export interface SocialMediaReport {
 export interface SocialPlatformData {
   platform: string;
   followers?: number;
+  new_followers?: number;
   posts?: number;
   reach?: number;
   impressions?: number;
   engagements?: number;
   engagement_rate?: number;
   video_views?: number;
-  new_followers?: number;
   top_post_reach?: number;
+  // Extended fields extracted by AI vision
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  saves?: number;
+  stories_views?: number;
+  profile_visits?: number;
+  link_clicks?: number;
+  top_post_description?: string;
+  raw_observations?: string;
+  [key: string]: unknown;
 }
 
 export interface MediaPlanItem {
