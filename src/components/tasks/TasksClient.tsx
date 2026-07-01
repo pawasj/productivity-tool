@@ -30,19 +30,13 @@ export default function TasksClient({ userId, verticals, members: initialMembers
   const [showAssignPicker, setShowAssignPicker] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
 
-  // Always fetch members via API route (service role) — browser client can't read profiles due to RLS
-  useEffect(() => {
-    fetch("/api/members")
-      .then(r => r.json())
-      .then(({ data }) => { if (data?.length) setMembers(data as Profile[]); });
-  }, []);
-
   const load = useCallback(async () => {
     setLoading(true);
-    // Fetch via API route (service role) so RLS doesn't hide other users' / verticals' tasks
+    // Fetch via API route (service role) — returns tasks + full member list in one call
     const res = await fetch("/api/tasks");
     const json = await res.json();
     setTasks((json.data || []) as ExtTodo[]);
+    if (json.members?.length) setMembers(json.members as Profile[]);
     setLoading(false);
   }, []);
 
