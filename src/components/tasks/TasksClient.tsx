@@ -9,6 +9,8 @@ import {
 import type { Todo, Vertical, Profile } from "@/lib/types";
 import { PRIORITY_COLORS, formatDate } from "@/lib/utils";
 
+const supabase = createClient();
+
 interface Props { userId: string; verticals: Vertical[]; members: Profile[]; }
 
 type ExtTodo = Todo & { assigned_to?: string[]; vertical?: Vertical; creator?: Profile };
@@ -26,8 +28,6 @@ export default function TasksClient({ userId, verticals, members }: Props) {
   const [filterAssignee, setFilterAssignee] = useState("");
   const [showAssignPicker, setShowAssignPicker] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
-  const supabase = createClient();
-
   const load = useCallback(async () => {
     setLoading(true);
     // Fetch via API route (service role) so RLS doesn't hide other users' / verticals' tasks
@@ -80,6 +80,9 @@ export default function TasksClient({ userId, verticals, members }: Props) {
   }
 
   async function toggleTask(t: ExtTodo) {
+    // Only creator or assigned user may change status
+    const canChange = t.user_id === userId || (t.assigned_to || []).includes(userId);
+    if (!canChange) return;
     const { data } = await supabase.from("todos").update({ completed: !t.completed })
       .eq("id", t.id).select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name,designation)").single();
     if (data) setTasks(prev => prev.map(x => x.id === t.id ? data as ExtTodo : x));
@@ -267,10 +270,14 @@ function TaskRow({ task, userId, members, onToggle, onDelete }: {
   const assignedMembers = members.filter(m => (task.assigned_to || []).includes(m.id));
   const isOverdue = !task.completed && task.due_date && new Date(task.due_date) < new Date();
   const isAssignedToMe = (task.assigned_to || []).includes(userId);
+  const canChange = task.user_id === userId || isAssignedToMe;
 
   return (
     <div className={`bg-white rounded-xl border shadow-sm p-4 flex items-start gap-3 group transition-all ${isOverdue ? "border-rose-200 bg-rose-50/30" : "border-slate-200"}`}>
-      <button onClick={() => onToggle(task)} className="mt-0.5 shrink-0">
+      <button
+        onClick={() => canChange && onToggle(task)}
+        title={canChange ? (task.completed ? "Mark pending" : "Mark complete") : "Only the creator or assignee can change status"}
+        className={`mt-0.5 shrink-0 ${canChange ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}>
         {task.completed
           ? <Check className="w-5 h-5 text-emerald-500" />
           : <Circle className={`w-5 h-5 ${isOverdue ? "text-rose-400" : "text-slate-300 group-hover:text-indigo-400"} transition-colors`} />}
@@ -306,8 +313,8 @@ function TaskRow({ task, userId, members, onToggle, onDelete }: {
           )}
         </div>
       </div>
-      {(task.user_id === userId || task.completed) && (
-        <button onClick={() => onDelete(task.id)} className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-all text-slate-300">
+      {task.user_id === userId && (
+        <button onClick={() => onDelete(task.id)} className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-all text-slate-300" title="Delete task">
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       )}
