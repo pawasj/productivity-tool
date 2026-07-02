@@ -1,0 +1,27 @@
+name: Retry failed deploy
+
+# Hostinger's SSH sometimes drops a specific GitHub runner IP ("connect ...
+# Connection timed out"), so all in-run retries (same IP) fail together.
+# When the deploy workflow fails, re-run it — a fresh run gets a NEW runner IP,
+# which Hostinger usually accepts. Capped so it can never loop forever.
+on:
+  workflow_run:
+    workflows: ["Deploy to Hostinger"]
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  rerun:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt < 4 }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-run deploy on a fresh runner IP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Deploy attempt ${{ github.event.workflow_run.run_attempt }} failed — re-running on a new runner IP..."
+          sleep 30
+          gh run rerun ${{ github.event.workflow_run.id }} --failed \
+            --repo ${{ github.repository }}
