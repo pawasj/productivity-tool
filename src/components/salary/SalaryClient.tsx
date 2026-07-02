@@ -376,80 +376,129 @@ export default function SalaryClient({ userId, verticals, members: initialMember
                 </button>
 
                 {!collapsed[section.key] && (
-                  <div className="divide-y divide-slate-50">
-                    {section.people.map(person => {
-                      const entry = entryFor(person);
-                      const isEditing = editing === person.key;
-                      return (
-                        <div key={person.key}
-                          className={`flex items-center gap-3 px-5 py-3 transition-colors ${isEditing ? "bg-emerald-50/60" : "hover:bg-slate-50/50"}`}>
-                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-sm shrink-0">
-                            {person.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium text-slate-900 text-sm">{person.name}</span>
-                              {person.isAdHoc && (
-                                <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">manual</span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-400 truncate mt-0.5">
-                              {person.role}{person.department ? ` · ${person.department}` : ""}
-                            </p>
-                          </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50/60">
+                          <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500 uppercase">Name</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Role / Dept</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Vertical</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Notes</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Amount</th>
+                          <th className="w-28" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {section.people.map(person => {
+                          const entry = entryFor(person);
+                          const isEditing = editing === person.key;
+                          const entryVertical = entry?.vertical_id ? verticals.find(v => v.id === entry.vertical_id) : null;
 
-                          {isEditing ? (
-                            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                              <div className="relative">
-                                <span className="absolute left-2.5 top-2 text-xs text-slate-400 font-medium">₹</span>
-                                <input autoFocus type="number" value={editAmount} onChange={e => setEditAmount(e.target.value)}
-                                  placeholder="Amount"
-                                  className="w-28 pl-6 pr-2 py-1.5 border border-emerald-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium" />
-                              </div>
-                              <select value={editVerticalId} onChange={e => setEditVerticalId(e.target.value)}
-                                className="px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none text-slate-600">
-                                <option value="">General</option>
-                                {verticals.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                              </select>
-                              <input value={editNotes} onChange={e => setEditNotes(e.target.value)}
-                                placeholder="Notes (optional)"
-                                className="w-32 px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none text-slate-600" />
-                              <div className="flex gap-1">
-                                <button onClick={() => saveEntry(person)} disabled={saving || !editAmount}
-                                  className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50">
-                                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Save
-                                </button>
-                                <button onClick={cancelEdit} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-3 shrink-0">
-                              {entry ? (
-                                <div className="text-right">
-                                  <p className="font-bold text-slate-900 text-sm">{fmt(entry.amount)}</p>
-                                  {entry.notes && <p className="text-xs text-slate-400 truncate max-w-[120px]">{entry.notes}</p>}
+                          if (isEditing) {
+                            return (
+                              <tr key={person.key} className="bg-emerald-50/60">
+                                <td className="px-5 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xs shrink-0">
+                                      {person.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <span className="font-medium text-slate-900">{person.name}</span>
+                                    {person.isAdHoc && <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">manual</span>}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-xs text-slate-500">
+                                  {person.role}{person.department ? ` · ${person.department}` : ""}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <select value={editVerticalId} onChange={e => setEditVerticalId(e.target.value)}
+                                    className="px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none text-slate-600 w-full">
+                                    <option value="">General</option>
+                                    {verticals.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                  </select>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <input value={editNotes} onChange={e => setEditNotes(e.target.value)}
+                                    placeholder="Notes (optional)"
+                                    className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none text-slate-600" />
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="relative">
+                                    <span className="absolute left-2.5 top-2 text-xs text-slate-400 font-medium">₹</span>
+                                    <input autoFocus type="number" value={editAmount} onChange={e => setEditAmount(e.target.value)}
+                                      placeholder="Amount"
+                                      className="w-28 pl-6 pr-2 py-1.5 border border-emerald-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium" />
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex gap-1 justify-end">
+                                    <button onClick={() => saveEntry(person)} disabled={saving || !editAmount}
+                                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50">
+                                      {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Save
+                                    </button>
+                                    <button onClick={cancelEdit} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return (
+                            <tr key={person.key} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-5 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xs shrink-0">
+                                    {person.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <span className="font-medium text-slate-900">{person.name}</span>
+                                  {person.isAdHoc && <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">manual</span>}
                                 </div>
-                              ) : (
-                                <span className="text-xs text-slate-300 italic">Not set</span>
-                              )}
-                              <button onClick={() => startEdit(person)}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100 hover:border-slate-300 transition-colors">
-                                <Pencil className="w-3 h-3" />
-                                {entry ? "Edit" : "Set"}
-                              </button>
-                              {entry && (
-                                <button onClick={() => clearEntry(person)}
-                                  className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-slate-500">
+                                {person.role}{person.department ? ` · ${person.department}` : ""}
+                              </td>
+                              <td className="px-4 py-3">
+                                {entryVertical ? (
+                                  <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: `${entryVertical.color}20`, color: entryVertical.color }}>
+                                    {entryVertical.name}
+                                  </span>
+                                ) : entry ? (
+                                  <span className="text-xs text-slate-400">General</span>
+                                ) : (
+                                  <span className="text-xs text-slate-300">—</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-slate-500 max-w-[220px]">
+                                {entry?.notes || <span className="text-slate-300">—</span>}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                {entry ? (
+                                  <span className="font-bold text-slate-900">{fmt(entry.amount)}</span>
+                                ) : (
+                                  <span className="text-xs text-slate-300 italic">Not set</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex gap-1 justify-end">
+                                  <button onClick={() => startEdit(person)}
+                                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100 hover:border-slate-300 transition-colors">
+                                    <Pencil className="w-3 h-3" />
+                                    {entry ? "Edit" : "Set"}
+                                  </button>
+                                  {entry && (
+                                    <button onClick={() => clearEntry(person)}
+                                      className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
