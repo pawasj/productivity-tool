@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { createClient } from "@/lib/supabase";
 import { BarChart3, Calendar, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import type { Vertical } from "@/lib/types";
 
@@ -16,14 +15,14 @@ export default function PnLReport({ verticals }: Props) {
   const [expenses, setExpenses] = useState(0);
   const [vData, setVData] = useState<Map<string, { name: string; color: string; revenue: number; expense: number }>>(new Map());
 
-  const supabase = createClient();
-
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: leads }, { data: exps }] = await Promise.all([
-      supabase.from("leads").select("deal_value, monthly_value, engagement_type, vertical_id, deal_month, approved_at, updated_at, vertical:verticals(name,color)").eq("status", "approved"),
-      supabase.from("expenses").select("amount, vertical_id, vertical:verticals(name,color)").eq("month", month),
-    ]);
+    // Service-role API — browser RLS was hiding leads/expenses from reports
+    const res = await fetch(`/api/reports/summary?month=${month}`);
+    const json = await res.json();
+    const leads = (json.leads || []) as Record<string, unknown>[];
+    const exps = (json.expenses || []) as Record<string, unknown>[];
+    const salaryEntries = (json.salaryEntries || []) as { amount: number; vertical_id?: string }[];
 
     let totalRev = 0;
     let totalExp = 0;
@@ -34,7 +33,7 @@ export default function PnLReport({ verticals }: Props) {
       if (l.approved_at) return String(l.approved_at).slice(0, 7);
       return String(l.updated_at || "").slice(0, 7);
     }
-    for (const l of (leads || []) as Record<string, unknown>[]) {
+    for (const l of leads) {
       if (lMonth(l) !== month) continue;
       const val = l.engagement_type === "retainer" ? Number(l.monthly_value || 0) : Number(l.deal_value || 0);
       totalRev += val;
@@ -44,7 +43,10 @@ export default function PnLReport({ verticals }: Props) {
       const ex = vMap.get(vId);
       if (ex) ex.revenue += val; else vMap.set(vId, { name: vName, color: vColor, revenue: val, expense: 0 });
     }
-    for (const e of (exps || []) as Record<string, unknown>[]) {
+    // Non-salary expenses from the expenses table; salaries come directly from
+    // salary_entries (source of truth) to avoid missing-sync or double-counting.
+    for (const e of exps) {
+      if (String(e.category || "") === "Salaries") continue;
       const amt = Number(e.amount || 0);
       totalExp += amt;
       const vId = String(e.vertical_id || "unassigned");
@@ -52,6 +54,15 @@ export default function PnLReport({ verticals }: Props) {
       const vColor = (e.vertical as {name:string;color:string} | null)?.color || "#94a3b8";
       const ex = vMap.get(vId);
       if (ex) ex.expense += amt; else vMap.set(vId, { name: vName, color: vColor, revenue: 0, expense: amt });
+    }
+    for (const s of salaryEntries) {
+      const amt = Number(s.amount || 0);
+      totalExp += amt;
+      const vId = String(s.vertical_id || "unassigned");
+      const v = verticals.find(vt => vt.id === s.vertical_id);
+      const ex = vMap.get(vId);
+      if (ex) ex.expense += amt;
+      else vMap.set(vId, { name: v?.name || "Salaries (General)", color: v?.color || "#94a3b8", revenue: 0, expense: amt });
     }
 
     setRevenue(totalRev); setExpenses(totalExp); setVData(vMap);

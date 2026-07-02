@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { createClient } from "@/lib/supabase";
 import { TrendingUp, Calendar, Download, Loader2, ExternalLink } from "lucide-react";
 import type { Vertical } from "@/lib/types";
 
@@ -24,16 +23,13 @@ export default function SalesReport({ verticals }: Props) {
   const [loading, setLoading] = useState(false);
   const [exportingSheet, setExportingSheet] = useState(false);
   const [exportError, setExportError] = useState("");
-  const supabase = createClient();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("leads")
-      .select("*, vertical:verticals(name,color), our_poc:profiles!leads_our_poc_id_fkey(full_name)")
-      .eq("status", "approved")
-      .order("updated_at", { ascending: false });
-    setLeads((data || []) as Lead[]);
+    // Service-role API — browser RLS was hiding other users' leads
+    const res = await fetch("/api/reports/summary");
+    const json = await res.json();
+    setLeads((json.leads || []) as Lead[]);
     setLoading(false);
   }, []);
 
