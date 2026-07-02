@@ -7,6 +7,7 @@ import {
   ChevronDown, ChevronRight, Plus, BarChart3, ListChecks, Trash2,
 } from "lucide-react";
 import type { Vertical, Profile } from "@/lib/types";
+import MonthPicker from "@/components/ui/MonthPicker";
 
 interface SalaryEntry {
   id: string;
@@ -303,8 +304,7 @@ export default function SalaryClient({ userId, verticals, members: initialMember
             {tab === "payroll" && (
               <>
                 <Calendar className="w-4 h-4 text-slate-400" />
-                <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <MonthPicker value={month} onChange={setMonth} accent="focus:ring-emerald-500" />
                 <button onClick={() => setShowAdd(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 shadow-sm">
                   <Plus className="w-4 h-4" /> Add Payout

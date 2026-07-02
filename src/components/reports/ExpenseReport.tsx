@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase";
 import { Plus, Trash2, Loader2, Calendar, Receipt } from "lucide-react";
+import MonthPicker from "@/components/ui/MonthPicker";
 import type { Vertical, Expense } from "@/lib/types";
 
 const CATEGORIES = ["Salaries", "Tools & Software", "Office Rent", "Marketing", "Travel", "Freelancers", "Content Production", "Miscellaneous"];
@@ -23,16 +24,21 @@ export default function ExpenseReport({ verticals, userId }: Props) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("expenses")
-      .select("*, vertical:verticals(id,name,color)")
-      .eq("month", month)
-      .order("created_at", { ascending: false });
-    setExpenses((data || []) as Expense[]);
+    // Service-role API so RLS never hides expenses created by other users
+    const res = await fetch(`/api/reports/summary?month=${month}`);
+    const json = await res.json();
+    setExpenses((json.expenses || []) as Expense[]);
     setLoading(false);
   }, [month]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Refresh when the user returns to this tab
+  useEffect(() => {
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [load]);
 
   async function addExpense() {
     if (!form.amount || !form.category) return;
@@ -54,7 +60,9 @@ export default function ExpenseReport({ verticals, userId }: Props) {
   }
 
   async function remove(id: string) {
-    await supabase.from("expenses").delete().eq("id", id);
+    if (!confirm("Delete this expense?")) return;
+    const { error } = await supabase.from("expenses").delete().eq("id", id);
+    if (error) { alert(`Failed to delete: ${error.message}`); return; }
     setExpenses(e => e.filter(x => x.id !== id));
   }
 
@@ -87,8 +95,7 @@ export default function ExpenseReport({ verticals, userId }: Props) {
           <div className="flex items-center gap-3">
             <Calendar className="w-4 h-4 text-slate-400" />
             <label className="text-sm font-medium text-slate-700">Month:</label>
-            <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-              className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500" />
+            <MonthPicker value={month} onChange={setMonth} accent="focus:ring-rose-500" />
           </div>
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-medium hover:bg-rose-700">

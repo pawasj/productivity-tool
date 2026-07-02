@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BarChart3, Calendar, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Calendar, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import MonthPicker from "@/components/ui/MonthPicker";
 import type { Vertical } from "@/lib/types";
 
 interface Props { verticals: Vertical[]; }
@@ -28,9 +29,10 @@ export default function PnLReport({ verticals }: Props) {
     let totalExp = 0;
     const vMap = new Map<string, { name: string; color: string; revenue: number; expense: number }>();
 
+    // Revenue is recorded in the month the deal was APPROVED.
     function lMonth(l: Record<string, unknown>) {
-      if (l.deal_month) return String(l.deal_month).slice(0, 7);
       if (l.approved_at) return String(l.approved_at).slice(0, 7);
+      if (l.deal_month) return String(l.deal_month).slice(0, 7);
       return String(l.updated_at || "").slice(0, 7);
     }
     for (const l of leads) {
@@ -71,6 +73,13 @@ export default function PnLReport({ verticals }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Refresh when the user returns to this tab so salary/pipeline edits reflect instantly
+  useEffect(() => {
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [load]);
+
   const gross = revenue - expenses;
   const margin = revenue > 0 ? Math.round((gross / revenue) * 100) : 0;
   const vRows = [...vData.values()].sort((a, b) => (b.revenue - b.expense) - (a.revenue - a.expense));
@@ -82,8 +91,7 @@ export default function PnLReport({ verticals }: Props) {
         <div className="flex items-center gap-3">
           <Calendar className="w-4 h-4 text-slate-400" />
           <label className="text-sm font-medium text-slate-700">Report Month:</label>
-          <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <MonthPicker value={month} onChange={setMonth} accent="focus:ring-blue-500" />
         </div>
       </div>
 

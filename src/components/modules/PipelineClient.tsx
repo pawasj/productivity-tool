@@ -525,8 +525,8 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
     setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status } : l));
 
     const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
-    // Record approval timestamp once — never overwrite it if already set
-    if (status === "approved" && !lead.approved_at) {
+    // Revenue is recorded in the month the lead is moved to Approved
+    if (status === "approved") {
       patch.approved_at = new Date().toISOString();
     }
     const { data, error } = await supabase.from("leads")

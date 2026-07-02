@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { TrendingUp, Calendar, Download, Loader2, ExternalLink } from "lucide-react";
+import { Calendar, Loader2, ExternalLink } from "lucide-react";
+import MonthPicker from "@/components/ui/MonthPicker";
 import type { Vertical } from "@/lib/types";
 
 interface Lead {
@@ -35,10 +36,18 @@ export default function SalesReport({ verticals }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Priority: deal_month (explicit) → approved_at (when status changed to approved) → updated_at fallback
+  // Refresh when the user returns to this tab so approvals reflect instantly
+  useEffect(() => {
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [load]);
+
+  // Revenue is recorded in the month the deal was APPROVED.
+  // Priority: approved_at → deal_month (manual override) → updated_at fallback
   function leadMonth(l: Lead) {
-    if (l.deal_month) return l.deal_month.slice(0, 7);
     if (l.approved_at) return l.approved_at.slice(0, 7);
+    if (l.deal_month) return l.deal_month.slice(0, 7);
     return l.updated_at.slice(0, 7);
   }
   const monthLeads = leads.filter(l => leadMonth(l) === month);
@@ -119,8 +128,7 @@ export default function SalesReport({ verticals }: Props) {
           <div className="flex items-center gap-3">
             <Calendar className="w-4 h-4 text-slate-400" />
             <label className="text-sm font-medium text-slate-700">Report Month:</label>
-            <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-              className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            <MonthPicker value={month} onChange={setMonth} accent="focus:ring-emerald-500" />
           </div>
           <button onClick={exportSheet} disabled={exportingSheet}
             className="flex items-center gap-2 px-4 py-2 text-sm text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 disabled:opacity-50">
