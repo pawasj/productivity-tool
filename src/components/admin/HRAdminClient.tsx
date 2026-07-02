@@ -61,7 +61,7 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
 
   async function fetchLeaves() {
     const { data } = await supabase.from("leave_applications")
-      .select("*, profiles:user_id(full_name, email, designation, reporting_manager_id), approver:approved_by(full_name)")
+      .select("*, profiles:user_id(full_name, email, reporting_manager_id), approver:approved_by(full_name)")
       .order("created_at", { ascending: false });
     setLeaves((data || []) as LeaveApplication[]);
   }

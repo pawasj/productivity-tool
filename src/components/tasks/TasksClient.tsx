@@ -65,7 +65,7 @@ export default function TasksClient({ userId, verticals, members: initialMembers
       user_id: userId,
       completed: false,
       assigned_to: form.assigned_to.length ? form.assigned_to : null,
-    }).select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name,designation)").single();
+    }).select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name)").single();
     if (data) {
       setTasks(prev => [data as ExtTodo, ...prev]);
       // Notify assigned members via in-app notification
@@ -87,7 +87,7 @@ export default function TasksClient({ userId, verticals, members: initialMembers
     const canChange = t.user_id === userId || (t.assigned_to || []).includes(userId);
     if (!canChange) return;
     const { data } = await supabase.from("todos").update({ completed: !t.completed })
-      .eq("id", t.id).select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name,designation)").single();
+      .eq("id", t.id).select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name)").single();
     if (data) setTasks(prev => prev.map(x => x.id === t.id ? data as ExtTodo : x));
   }
 

@@ -89,7 +89,7 @@ export default function SalaryClient({ userId, verticals, members: initialMember
   useEffect(() => {
     async function fetchRoster() {
       if (initialMembers.length === 0) {
-        const { data } = await supabase.from("profiles").select("id, full_name, designation, department, role").order("full_name");
+        const { data } = await supabase.from("profiles").select("*").order("full_name");
         if (data?.length) setMembers(data as Profile[]);
       }
       if (initialVendors.length === 0) {

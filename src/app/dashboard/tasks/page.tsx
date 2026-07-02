@@ -13,7 +13,7 @@ export default async function TasksPage() {
   const svc = createServiceRoleClient();
   const [{ data: verticals }, { data: members }] = await Promise.all([
     svc.from("verticals").select("*").order("order_index"),
-    svc.from("profiles").select("id, full_name, email, designation, role").order("full_name"),
+    svc.from("profiles").select("*").order("full_name"),
   ]);
 
   return (

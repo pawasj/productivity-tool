@@ -13,7 +13,7 @@ export default async function ClientsPage() {
   const svc = createServiceRoleClient();
   const [{ data: verticals }, { data: members }, { data: vendors }] = await Promise.all([
     svc.from("verticals").select("*").order("order_index"),
-    svc.from("profiles").select("id,full_name,designation,department").order("full_name"),
+    svc.from("profiles").select("*").order("full_name"),
     svc.from("vendors").select("id,name,type,service_type,rate").order("name"),
   ]);
 

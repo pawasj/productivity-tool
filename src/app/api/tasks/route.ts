@@ -10,11 +10,11 @@ export async function GET() {
   const [{ data, error }, { data: members }] = await Promise.all([
     service
       .from("todos")
-      .select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name,designation)")
+      .select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name)")
       .order("created_at", { ascending: false }),
     service
       .from("profiles")
-      .select("id, full_name, email, designation, role")
+      .select("*")
       .order("full_name"),
   ]);
 

@@ -127,7 +127,7 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
   }
   async function fetchTeamLeaves() {
     const { data } = await supabase.from("leave_applications")
-      .select("*, profiles:user_id(full_name, email, designation), approver:approved_by(full_name)")
+      .select("*, profiles:user_id(full_name, email), approver:approved_by(full_name)")
       .order("created_at", { ascending: false });
     const myTeam = members.filter(m => m.reporting_manager_id === profile.id).map(m => m.id);
     setTeamLeaves(((data || []) as LeaveApplication[]).filter(l => myTeam.includes(l.user_id)));
