@@ -24,7 +24,7 @@ export default function TasksClient({ userId, verticals, members: initialMembers
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "done">("pending");
+  const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "done">("all");
   const [filterVertical, setFilterVertical] = useState("");
   const [filterAssignee, setFilterAssignee] = useState("");
   const [showAssignPicker, setShowAssignPicker] = useState(false);
