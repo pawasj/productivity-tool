@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Briefcase, Network, UserCircle,
   LogOut, ChevronRight, Shield,
   MessageSquareDot, Building2, BarChart3, Users2, FileBarChart2, Share2,
-  CheckSquare, IndianRupee, FlaskConical,
+  CheckSquare, IndianRupee, FlaskConical, Radio,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { canAccess } from "@/lib/access-client";
@@ -32,6 +32,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/salary", icon: IndianRupee, label: "Salary & Payouts", module: "salary" as const },
   { href: "/dashboard/research", icon: FlaskConical, label: "Research Hub", module: "research_hub" as const },
   { href: "/dashboard/vendors", icon: Building2, label: "Vendor Management", module: "vendor_management" as const },
+  { href: "/dashboard/owned-media", icon: Radio, label: "Owned Media", module: "owned_media" as const },
   { href: "/dashboard/profile", icon: UserCircle, label: "My Profile", module: null },
 ];
 

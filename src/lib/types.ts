@@ -19,6 +19,7 @@ export const ALL_MODULES = [
   "salary",
   "research_hub",
   "vendor_management",
+  "owned_media",
   "admin_access",
 ] as const;
 
@@ -36,6 +37,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   salary: "Salary & Payouts",
   research_hub: "Research Hub",
   vendor_management: "Vendor Management",
+  owned_media: "Owned Media",
   admin_access: "Admin Panel",
 };
 
@@ -52,8 +54,27 @@ export const MODULE_ROUTES: Record<AppModule, string> = {
   salary: "/dashboard/salary",
   research_hub: "/dashboard/research",
   vendor_management: "/dashboard/vendors",
+  owned_media: "/dashboard/owned-media",
   admin_access: "/dashboard/admin",
 };
+
+// ── Owned Media ────────────────────────────────────────────────────────────
+export type OwnedMediaPlatform = "instagram" | "linkedin" | "youtube" | "website" | "reddit" | "substack";
+
+export interface OwnedMediaProperty {
+  id: string;
+  name: string;
+  category?: string;
+  links: Partial<Record<OwnedMediaPlatform, string>>;
+  metrics: Partial<Record<OwnedMediaPlatform, number>>;   // followers / subscribers / members
+  metrics_updated_at?: string;
+  cadence: Record<string, number>;   // e.g. { posts: 5, reels: 3, carousels: 2, articles: 1, newsletters: 1, videos: 2 } per week
+  pricing: Record<string, number>;   // e.g. { post: 5000, reel: 8000, story: 2000, collab: 10000, carousel: 6000, newsletter: 15000, video: 20000 }
+  notes?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Profile {
   id: string;
