@@ -103,6 +103,18 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
     if (data) setMembers(members.map((m) => m.id === member.id ? data as Profile : m));
   }
 
+  async function removeUser(member: Profile) {
+    if (!confirm(`Remove ${member.full_name} (${member.email})?\n\nTheir account will be deleted and they will no longer be able to log in. This cannot be undone.`)) return;
+    const res = await fetch("/api/admin/delete-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: member.id }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) { alert(json.error || "Failed to remove user"); return; }
+    setMembers(members.filter(m => m.id !== member.id));
+  }
+
   return (
     <div className="flex-1 overflow-y-auto p-6">
       <div className="max-w-4xl mx-auto">
@@ -280,12 +292,20 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                         <Settings className="w-3 h-3" /> Access
                       </button>
                       {member.id !== currentUser.id && (
-                        <button
-                          onClick={() => toggleRole(member)}
-                          className="text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors"
-                        >
-                          Make {member.role === "admin" ? "Member" : "Admin"}
-                        </button>
+                        <>
+                          <button
+                            onClick={() => toggleRole(member)}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors"
+                          >
+                            Make {member.role === "admin" ? "Member" : "Admin"}
+                          </button>
+                          <button
+                            onClick={() => removeUser(member)}
+                            className="text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition-colors"
+                          >
+                            Remove
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>
