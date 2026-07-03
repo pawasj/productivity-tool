@@ -563,6 +563,19 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
     }
   }
 
+  async function updateBriefField(briefId: string, field: string, value: string | null) {
+    setBriefs(prev => prev.map(b => String(b.id) === briefId ? { ...b, [field]: value } : b));
+    const { error } = await supabase.from("client_briefs").update({ [field]: value }).eq("id", briefId);
+    if (error) alert(`Failed to save: ${error.message}`);
+  }
+
+  async function updateLeadFollowUp(lead: Lead, value: string) {
+    const v = value || null;
+    setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, next_follow_up: v || undefined } : l));
+    const { error } = await supabase.from("leads").update({ next_follow_up: v }).eq("id", lead.id);
+    if (error) alert(`Failed to save: ${error.message}`);
+  }
+
   function openBriefInDistro(briefId: string) {
     router.push(`/dashboard/distro?brief=${briefId}`);
   }
@@ -829,13 +842,9 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {lead.next_follow_up ? (
-                            <span className={`text-xs font-medium ${new Date(lead.next_follow_up) < new Date() ? "text-red-500" : "text-slate-600"}`}>
-                              {formatDate(lead.next_follow_up)}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-300">—</span>
-                          )}
+                          <input type="date" value={(lead.next_follow_up || "").slice(0, 10)}
+                            onChange={e => updateLeadFollowUp(lead, e.target.value)}
+                            className={`text-xs border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 ${lead.next_follow_up && new Date(lead.next_follow_up) < new Date() ? "text-red-500 border-red-200" : "text-slate-600 border-slate-200"}`} />
                         </td>
                         <td className="px-4 py-3 sticky right-0 bg-white group-hover:bg-slate-50 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.06)]">
                           <div className="flex items-center gap-1">
@@ -911,7 +920,12 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs text-slate-400">—</span>
+                        <select value={String(brief.vertical_id || "")}
+                          onChange={e => updateBriefField(String(brief.id), "vertical_id", e.target.value || null)}
+                          className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-violet-400 text-slate-600 max-w-[130px]">
+                          <option value="">No vertical</option>
+                          {verticals.map(v => <option key={v.id} value={v.id}>{v.icon} {v.name}</option>)}
+                        </select>
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs text-slate-400">—</span>
@@ -937,7 +951,9 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs text-slate-300">—</span>
+                        <input type="date" value={String(brief.next_follow_up || "").slice(0, 10)}
+                          onChange={e => updateBriefField(String(brief.id), "next_follow_up", e.target.value || null)}
+                          className={`text-xs border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400 ${brief.next_follow_up && new Date(String(brief.next_follow_up)) < new Date() ? "text-red-500 border-red-200" : "text-slate-600 border-slate-200"}`} />
                       </td>
                       <td className="px-4 py-3 sticky right-0 bg-white group-hover:bg-violet-50/20 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.06)]">
                         <div className="flex items-center gap-1.5">

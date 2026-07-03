@@ -89,6 +89,9 @@ export default function NotificationBell() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // Generate due follow-up reminders before reading (deduped server-side)
+    await fetch("/api/followups/check", { method: "POST" }).catch(() => {});
+
     const { data: dbNotifs } = await supabase
       .from("notifications")
       .select("*")

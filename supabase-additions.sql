@@ -185,3 +185,8 @@ alter table influencers add column if not exists page_notes text;
 alter table client_briefs drop constraint if exists client_briefs_status_check;
 alter table client_briefs add constraint client_briefs_status_check
   check (status in ('draft','planning','approved','shipped','accepted','rejected','live','completed','lost'));
+
+-- ─── Brief vertical + follow-up reminders (Pipeline) ──────────────────────────
+alter table client_briefs add column if not exists vertical_id uuid references verticals(id) on delete set null;
+alter table client_briefs add column if not exists next_follow_up date;
+alter table leads add column if not exists next_follow_up date;
