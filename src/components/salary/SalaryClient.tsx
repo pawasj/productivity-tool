@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 import {
   IndianRupee, Loader2, Calendar, Pencil, Check, X,
   ChevronDown, ChevronRight, Plus, BarChart3, ListChecks, Trash2,
+  Landmark, CheckCircle2,
 } from "lucide-react";
 import type { Vertical, Profile } from "@/lib/types";
 import MonthPicker from "@/components/ui/MonthPicker";
@@ -19,7 +20,17 @@ interface SalaryEntry {
   amount: number;
   month: string;
   notes?: string;
+  paid?: boolean;
 }
+
+interface BankForm {
+  account_holder_name: string;
+  bank_name: string;
+  account_number: string;
+  ifsc_code: string;
+  upi_id: string;
+}
+const EMPTY_BANK: BankForm = { account_holder_name: "", bank_name: "", account_number: "", ifsc_code: "", upi_id: "" };
 
 interface VendorRow { id: string; name: string; type: string; service_type?: string; rate?: number }
 
@@ -85,6 +96,16 @@ export default function SalaryClient({ userId, verticals, members: initialMember
   // History
   const [history, setHistory] = useState<SalaryEntry[]>([]);
   const [histLoading, setHistLoading] = useState(false);
+
+  // Paid / Unpaid filter
+  const [payFilter, setPayFilter] = useState<"all" | "unpaid" | "paid">("all");
+
+  // Bank details popup
+  const [bankFor, setBankFor] = useState<RosterPerson | null>(null);
+  const [bankLoading, setBankLoading] = useState(false);
+  const [bankForm, setBankForm] = useState<BankForm>({ ...EMPTY_BANK });
+  const [bankSaving, setBankSaving] = useState(false);
+  const [bankError, setBankError] = useState("");
 
   // Re-fetch members/vendors client-side to ensure data always populates
   useEffect(() => {
@@ -240,6 +261,73 @@ export default function SalaryClient({ userId, verticals, members: initialMember
     setEntries(prev => prev.filter(e => e.id !== existing.id));
   }
 
+  // Mark a payout as paid / unpaid
+  async function togglePaid(person: RosterPerson) {
+    const entry = entryFor(person);
+    if (!entry) return;
+    const newPaid = !entry.paid;
+    setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, paid: newPaid } : e));
+    const { error } = await supabase.from("salary_entries").update({ paid: newPaid }).eq("id", entry.id);
+    if (error) {
+      setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, paid: !newPaid } : e));
+      alert(`Failed to update paid status: ${error.message}`);
+    }
+  }
+
+  // Bank details popup — employees/interns link to their profile's bank details
+  function personUserId(person: RosterPerson): string | null {
+    return !person.isAdHoc && person.category === "employee" ? person.source_id : null;
+  }
+
+  async function openBank(person: RosterPerson) {
+    setBankFor(person);
+    setBankForm({ ...EMPTY_BANK });
+    setBankError("");
+    const uid = personUserId(person);
+    if (!uid) return;
+    setBankLoading(true);
+    try {
+      const res = await fetch(`/api/salary/bank-details?user_id=${uid}`);
+      const json = await res.json();
+      if (json.error) setBankError(json.error);
+      else if (json.data) {
+        setBankForm({
+          account_holder_name: json.data.account_holder_name || "",
+          bank_name: json.data.bank_name || "",
+          account_number: json.data.account_number || "",
+          ifsc_code: json.data.ifsc_code || "",
+          upi_id: json.data.upi_id || "",
+        });
+      }
+    } catch { setBankError("Failed to load bank details"); }
+    finally { setBankLoading(false); }
+  }
+
+  async function saveBank() {
+    const uid = bankFor ? personUserId(bankFor) : null;
+    if (!uid) return;
+    setBankSaving(true);
+    setBankError("");
+    try {
+      const res = await fetch("/api/salary/bank-details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: uid, ...bankForm }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) setBankError(json.error || "Save failed");
+      else setBankFor(null);
+    } catch { setBankError("Save failed. Try again."); }
+    finally { setBankSaving(false); }
+  }
+
+  function passesPayFilter(p: RosterPerson) {
+    if (payFilter === "all") return true;
+    const e = entryFor(p);
+    if (payFilter === "paid") return !!e?.paid;
+    return !e?.paid; // unpaid — includes payouts not yet set
+  }
+
   // Add payout (ad-hoc)
   async function submitAdd() {
     if (!addForm.name.trim() || !addForm.amount) return;
@@ -277,9 +365,9 @@ export default function SalaryClient({ userId, verticals, members: initialMember
   const sectionSet = (cat: string) => entries.filter(e => e.member_type === cat).length;
 
   const SECTIONS = [
-    { key: "employee", label: "Employees", icon: "👤", people: roster.filter(r => r.category === "employee") },
-    { key: "intern", label: "Interns", icon: "🎓", people: roster.filter(r => r.category === "intern") },
-    { key: "freelancer", label: "Vendors & Freelancers", icon: "🤝", people: roster.filter(r => r.category === "freelancer") },
+    { key: "employee", label: "Employees", icon: "👤", people: roster.filter(r => r.category === "employee" && passesPayFilter(r)) },
+    { key: "intern", label: "Interns", icon: "🎓", people: roster.filter(r => r.category === "intern" && passesPayFilter(r)) },
+    { key: "freelancer", label: "Vendors & Freelancers", icon: "🤝", people: roster.filter(r => r.category === "freelancer" && passesPayFilter(r)) },
   ].filter(s => s.people.length > 0);
 
   // History table data
@@ -305,6 +393,14 @@ export default function SalaryClient({ userId, verticals, members: initialMember
               <>
                 <Calendar className="w-4 h-4 text-slate-400" />
                 <MonthPicker value={month} onChange={setMonth} accent="focus:ring-emerald-500" />
+                <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
+                  {(["all", "unpaid", "paid"] as const).map(f => (
+                    <button key={f} onClick={() => setPayFilter(f)}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-all capitalize ${payFilter === f ? "bg-white shadow text-emerald-700" : "text-slate-500 hover:text-slate-700"}`}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
                 <button onClick={() => setShowAdd(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 shadow-sm">
                   <Plus className="w-4 h-4" /> Add Payout
@@ -385,7 +481,8 @@ export default function SalaryClient({ userId, verticals, members: initialMember
                           <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Vertical</th>
                           <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Notes</th>
                           <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Amount</th>
-                          <th className="w-28" />
+                          <th className="text-center px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Paid</th>
+                          <th className="w-32" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
@@ -429,6 +526,7 @@ export default function SalaryClient({ userId, verticals, members: initialMember
                                       className="w-28 pl-6 pr-2 py-1.5 border border-emerald-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium" />
                                   </div>
                                 </td>
+                                <td className="px-4 py-3 text-center text-xs text-slate-300">—</td>
                                 <td className="px-4 py-3">
                                   <div className="flex gap-1 justify-end">
                                     <button onClick={() => saveEntry(person)} disabled={saving || !editAmount}
@@ -479,8 +577,27 @@ export default function SalaryClient({ userId, verticals, members: initialMember
                                   <span className="text-xs text-slate-300 italic">Not set</span>
                                 )}
                               </td>
+                              <td className="px-4 py-3 text-center">
+                                {entry ? (
+                                  <button onClick={() => togglePaid(person)}
+                                    title={entry.paid ? "Mark as unpaid" : "Mark as paid"}
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${entry.paid
+                                      ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                      : "bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700"}`}>
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    {entry.paid ? "Paid" : "Mark Paid"}
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-slate-300">—</span>
+                                )}
+                              </td>
                               <td className="px-4 py-3">
                                 <div className="flex gap-1 justify-end">
+                                  <button onClick={() => openBank(person)}
+                                    title="Bank account details"
+                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                                    <Landmark className="w-3.5 h-3.5" />
+                                  </button>
                                   <button onClick={() => startEdit(person)}
                                     className="flex items-center gap-1 px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100 hover:border-slate-300 transition-colors">
                                     <Pencil className="w-3 h-3" />
@@ -623,6 +740,70 @@ export default function SalaryClient({ userId, verticals, members: initialMember
                 {addSaving ? "Saving…" : "Add Payout"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bank Details Popup */}
+      {bankFor && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                  <Landmark className="w-4 h-4 text-indigo-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900">Bank Details</h3>
+                  <p className="text-xs text-slate-400">{bankFor.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setBankFor(null)}><X className="w-4 h-4 text-slate-400" /></button>
+            </div>
+
+            {bankLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-indigo-400" /></div>
+            ) : personUserId(bankFor) ? (
+              <>
+                <div className="p-5 space-y-3">
+                  {([
+                    { key: "account_holder_name", label: "Account Holder Name" },
+                    { key: "bank_name", label: "Bank Name" },
+                    { key: "account_number", label: "Account Number" },
+                    { key: "ifsc_code", label: "IFSC Code" },
+                    { key: "upi_id", label: "UPI ID" },
+                  ] as { key: keyof BankForm; label: string }[]).map(({ key, label }) => (
+                    <div key={key}>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">{label}</label>
+                      <input value={bankForm[key]}
+                        onChange={e => setBankForm(f => ({ ...f, [key]: e.target.value }))}
+                        placeholder="Not added yet"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    </div>
+                  ))}
+                  <p className="text-xs text-slate-400">Synced with the member&apos;s Bank Details in My Profile.</p>
+                  {bankError && <p className="text-xs text-rose-600">{bankError}</p>}
+                </div>
+                <div className="flex gap-3 px-5 py-4 border-t border-slate-100">
+                  <button onClick={() => setBankFor(null)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Close</button>
+                  <button onClick={saveBank} disabled={bankSaving}
+                    className="flex-1 py-2.5 text-sm bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                    {bankSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {bankSaving ? "Saving…" : "Save Details"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="p-6 text-center">
+                <p className="text-sm text-slate-500">
+                  {bankFor.isAdHoc
+                    ? "This is a manually added payout with no linked user account, so bank details can't be stored against a profile."
+                    : "Bank details are available only for team members with app accounts. Vendors and interns from the vendor list don't have profiles."}
+                </p>
+                <button onClick={() => setBankFor(null)}
+                  className="mt-4 px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Close</button>
+              </div>
+            )}
           </div>
         </div>
       )}
