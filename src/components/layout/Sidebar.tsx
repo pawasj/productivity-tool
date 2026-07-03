@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Briefcase, Network, UserCircle,
   LogOut, ChevronRight, Shield,
   MessageSquareDot, Building2, BarChart3, Users2, FileBarChart2, Share2,
-  CheckSquare, IndianRupee, FlaskConical, Radio,
+  CheckSquare, IndianRupee, FlaskConical, Radio, ListTodo, Lightbulb,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { canAccess } from "@/lib/access-client";
@@ -29,6 +29,8 @@ const NAV_ITEMS = [
   { href: "/dashboard/reports", icon: FileBarChart2, label: "Reports", module: "reports" as const },
   { href: "/dashboard/social-reports", icon: Share2, label: "Social Media Reports", module: "social_media_reports" as const },
   { href: "/dashboard/tasks", icon: CheckSquare, label: "Tasks", module: "tasks" as const },
+  { href: "/dashboard/todos", icon: ListTodo, label: "To-Dos", module: null },
+  { href: "/dashboard/ideas", icon: Lightbulb, label: "Idea Dump", module: null },
   { href: "/dashboard/salary", icon: IndianRupee, label: "Salary & Payouts", module: "salary" as const },
   { href: "/dashboard/research", icon: FlaskConical, label: "Research Hub", module: "research_hub" as const },
   { href: "/dashboard/vendors", icon: Building2, label: "Vendor Management", module: "vendor_management" as const },

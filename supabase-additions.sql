@@ -190,3 +190,6 @@ alter table client_briefs add constraint client_briefs_status_check
 alter table client_briefs add column if not exists vertical_id uuid references verticals(id) on delete set null;
 alter table client_briefs add column if not exists next_follow_up date;
 alter table leads add column if not exists next_follow_up date;
+
+-- ─── Personal to-dos: kind (todo | follow_up) ────────────────────────────────
+alter table todos add column if not exists kind text default 'todo';

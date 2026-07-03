@@ -3,14 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import { Plus, Settings2, X, Check, Palette, LayoutDashboard } from "lucide-react";
-import TodosModule from "@/components/modules/TodosModule";
-import TeamTasksModule from "@/components/modules/TeamTasksModule";
-import MeetingsModule from "@/components/modules/MeetingsModule";
-import NotesModule from "@/components/modules/NotesModule";
-import TeamDiscussionsModule from "@/components/modules/TeamDiscussionsModule";
-import VerticalPipelineModule from "@/components/modules/VerticalPipelineModule";
-import IdeaDumpModule from "@/components/modules/IdeaDumpModule";
-import OverviewModule from "@/components/modules/OverviewModule";
+import CollatedOverview from "@/components/modules/CollatedOverview";
 import type { Vertical, Profile } from "@/lib/types";
 import { VERTICAL_COLORS } from "@/lib/utils";
 
@@ -198,7 +191,7 @@ export default function DashboardClient({ verticals: initialVerticals, profile, 
                   <p className="text-sm text-slate-400">All verticals at a glance</p>
                 </div>
               </div>
-              <OverviewModule verticals={verticals} onSelectVertical={setActiveVertical} />
+              <CollatedOverview verticals={verticals} userId={userId} />
             </>
           ) : current ? (
             <>
@@ -210,36 +203,10 @@ export default function DashboardClient({ verticals: initialVerticals, profile, 
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-slate-900">{current.name}</h1>
-                  <p className="text-sm text-slate-400">Vertical Workspace</p>
+                  <p className="text-sm text-slate-400">Everything in this vertical, auto-collated — add items in their own panels</p>
                 </div>
               </div>
-
-              {/* Grid Layout */}
-              <div className="grid grid-cols-12 gap-4">
-                <div className="col-span-12 lg:col-span-4">
-                  <TodosModule verticalId={current.id} userId={userId} members={members} />
-                </div>
-                <div className="col-span-12 lg:col-span-4">
-                  <TeamTasksModule verticalId={current.id} userId={userId} members={members} />
-                </div>
-                <div className="col-span-12 lg:col-span-4">
-                  <MeetingsModule verticalId={current.id} userId={userId} members={members} />
-                </div>
-
-                <div className="col-span-12 lg:col-span-4">
-                  <NotesModule verticalId={current.id} userId={userId} />
-                </div>
-                <div className="col-span-12 lg:col-span-4">
-                  <IdeaDumpModule verticalId={current.id} userId={userId} />
-                </div>
-                <div className="col-span-12 lg:col-span-4">
-                  <VerticalPipelineModule verticalId={current.id} members={members} verticalColor={current.color} />
-                </div>
-
-                <div className="col-span-12">
-                  <TeamDiscussionsModule verticalId={current.id} userId={userId} members={members} profile={profile} />
-                </div>
-              </div>
+              <CollatedOverview verticals={verticals} userId={userId} focusVerticalId={current.id} />
             </>
           ) : null}
         </div>
