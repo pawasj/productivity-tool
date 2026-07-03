@@ -105,7 +105,7 @@ function AnalyticsPanel({ data, onClose }: { data: AnalyticsData; onClose: () =>
         key,
         label,
         approved: approvedLeads.reduce((s, l) => s + (l.deal_value || 0), 0) +
-                  approvedBriefs.reduce((s, b) => s + (Number(b.total_budget) || 0), 0),
+                  approvedBriefs.reduce((s, b) => s + (Number(b.total_budget ?? b.budget) || 0), 0),
         won: wonLeads.reduce((s, l) => s + (l.deal_value || 0), 0),
         pipeline: pipeLeads.reduce((s, l) => s + (l.deal_value || 0), 0),
       });
@@ -128,7 +128,7 @@ function AnalyticsPanel({ data, onClose }: { data: AnalyticsData; onClose: () =>
   const byVertical = verticals.map(v => {
     const vLeads = leads.filter(l => l.vertical_id === v.id);
     const vBriefs = briefs.filter(b => String(b.vertical_id || "") === v.id);
-    const value = vLeads.reduce((s, l) => s + (l.deal_value || 0), 0) + vBriefs.reduce((s, b) => s + (Number(b.total_budget) || 0), 0);
+    const value = vLeads.reduce((s, l) => s + (l.deal_value || 0), 0) + vBriefs.reduce((s, b) => s + (Number(b.total_budget ?? b.budget) || 0), 0);
     return { name: v.name, icon: v.icon, color: v.color, count: vLeads.length + vBriefs.length, value };
   }).filter(v => v.count > 0).sort((a, b) => b.value - a.value);
 
@@ -385,7 +385,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
 
     const totalPipeline = activeLeads.reduce((s, l) => s + (l.deal_value || 0), 0);
     const approvedRevenue = approvedLeads.reduce((s, l) => s + (l.deal_value || 0), 0)
-      + approvedBriefs.reduce((s, b) => s + (Number(b.total_budget) || 0), 0);
+      + approvedBriefs.reduce((s, b) => s + (Number(b.total_budget ?? b.budget) || 0), 0);
     const retainerMRR = retainerLeads.reduce((s, l) => s + (l.monthly_value || 0), 0);
 
     const thisMonth = currentMonthStr().slice(0, 7);
@@ -923,7 +923,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-sm font-semibold text-slate-800">
-                          {brief.total_budget ? fmtL(Number(brief.total_budget)) : "—"}
+                          {(brief.total_budget ?? brief.budget) ? fmtL(Number(brief.total_budget ?? brief.budget)) : "—"}
                         </p>
                       </td>
                       <td className="px-4 py-3">

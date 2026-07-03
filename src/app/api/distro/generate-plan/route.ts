@@ -216,7 +216,27 @@ Return ONLY valid JSON — no markdown, no explanation:
       };
     });
 
-    return NextResponse.json({ plan, usedFallback: !hasDB });
+    // HARD BUDGET CAP: client cost = agency spend x (1 + margin). Never exceed
+    // the entered budget — drop paid rows from the end until we fit.
+    // Rate-0 rows (owned media / barter) are free and always kept.
+    let spend = plan.reduce((s: number, r: Record<string, unknown>) => s + (Number(r.total_cost) || 0), 0);
+    const capped = [...plan];
+    if (spend > targetSpend) {
+      for (let i = capped.length - 1; i >= 0 && spend > targetSpend; i--) {
+        const cost = Number(capped[i].total_cost) || 0;
+        if (cost <= 0) continue;
+        spend -= cost;
+        capped.splice(i, 1);
+      }
+    }
+
+    return NextResponse.json({
+      plan: capped,
+      usedFallback: !hasDB,
+      trimmed: capped.length < plan.length ? plan.length - capped.length : 0,
+      agency_spend: spend,
+      client_cost: Math.round(spend * (1 + margin / 100)),
+    });
   } catch (err: unknown) {
     console.error("generate-plan error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
