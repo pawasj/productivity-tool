@@ -138,13 +138,15 @@ Return ONLY valid JSON — no markdown, no explanation:
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 8192,
+      max_tokens: 32000,
       messages: [{ role: "user", content: prompt }],
     });
 
     const text = (message.content[0] as { type: string; text: string }).text;
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("Claude did not return valid JSON");
+    const braceIdx = text.indexOf("{");
+    if (braceIdx < 0) throw new Error("Claude did not return valid JSON");
+    const lastBrace = text.lastIndexOf("}");
+    const jsonMatch = [text.slice(braceIdx, lastBrace > braceIdx ? lastBrace + 1 : undefined)];
 
     // Repair common JSON issues: trailing commas, unescaped characters
     const repaired = jsonMatch[0]
@@ -155,10 +157,19 @@ Return ONLY valid JSON — no markdown, no explanation:
     try {
       parsed = JSON.parse(repaired);
     } catch {
-      // Last resort: extract just the plan array
-      const arrayMatch = repaired.match(/"plan"\s*:\s*(\[[\s\S]*?\])\s*[,}]/);
-      if (!arrayMatch) throw new Error(`JSON parse failed: ${repaired.slice(0, 300)}`);
-      parsed = { plan: JSON.parse(arrayMatch[1]) };
+      // Salvage: recover every complete row object even if the response was
+      // truncated mid-array (e.g. hit the token limit)
+      const planStart = repaired.indexOf('"plan"');
+      const body = planStart >= 0 ? repaired.slice(planStart) : repaired;
+      const rows: Record<string, unknown>[] = [];
+      for (const objMatch of body.matchAll(/\{[^{}]*\}/g)) {
+        try {
+          const row = JSON.parse(objMatch[0]);
+          if (row && typeof row === "object" && row.handle_name) rows.push(row);
+        } catch { /* skip incomplete row */ }
+      }
+      if (rows.length === 0) throw new Error(`JSON parse failed: ${repaired.slice(0, 300)}`);
+      parsed = { plan: rows };
     }
 
     // Build a fast lookup: handle_name → influencer DB row
