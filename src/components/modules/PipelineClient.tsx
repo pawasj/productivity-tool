@@ -405,10 +405,14 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
     };
   }, [leads, briefs]);
 
-  // Funnel counts (leads only, for the mini strip)
+  // Funnel counts — leads + campaign briefs combined
   const funnelCounts = useMemo(() => {
-    return STATUSES.map(s => ({ stage: s, count: leads.filter(l => l.status === s).length }));
-  }, [leads]);
+    return STATUSES.map(s => ({
+      stage: s,
+      count: leads.filter(l => l.status === s).length
+        + briefs.filter(b => String(b.status || "draft") === s).length,
+    }));
+  }, [leads, briefs]);
 
   // Available months (for filter)
   const availableMonths = useMemo(() => {
