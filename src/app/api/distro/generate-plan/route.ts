@@ -136,11 +136,11 @@ Return ONLY valid JSON — no markdown, no explanation:
   ]
 }`;
 
-    const message = await anthropic.messages.create({
+    const message = await anthropic.messages.stream({
       model: "claude-sonnet-4-6",
       max_tokens: 32000,
       messages: [{ role: "user", content: prompt }],
-    });
+    }).finalMessage();
 
     const text = (message.content[0] as { type: string; text: string }).text;
     const braceIdx = text.indexOf("{");
