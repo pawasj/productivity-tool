@@ -20,6 +20,8 @@ export const ALL_MODULES = [
   "research_hub",
   "vendor_management",
   "owned_media",
+  "todos",
+  "idea_dump",
   "admin_access",
 ] as const;
 
@@ -38,6 +40,8 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   research_hub: "Research Hub",
   vendor_management: "Vendor Management",
   owned_media: "Owned Media",
+  todos: "To-Dos",
+  idea_dump: "Idea Dump",
   admin_access: "Admin Panel",
 };
 
@@ -55,6 +59,8 @@ export const MODULE_ROUTES: Record<AppModule, string> = {
   research_hub: "/dashboard/research",
   vendor_management: "/dashboard/vendors",
   owned_media: "/dashboard/owned-media",
+  todos: "/dashboard/todos",
+  idea_dump: "/dashboard/ideas",
   admin_access: "/dashboard/admin",
 };
 

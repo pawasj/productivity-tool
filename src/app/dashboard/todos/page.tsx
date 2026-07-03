@@ -1,12 +1,14 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
 import PersonalTodosClient from "@/components/todos/PersonalTodosClient";
+import { requireAccess } from "@/lib/access";
 import type { Vertical } from "@/lib/types";
 
 export default async function TodosPage() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  await requireAccess("todos");
 
   const { data: verticals } = await supabase.from("verticals").select("*").order("order_index");
 
