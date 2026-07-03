@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Radio, Plus, X, Loader2, RefreshCw, Pencil, Trash2, Globe, Mail,
 } from "lucide-react";
+import { CONTENT_CATEGORIES } from "@/lib/types";
 import type { OwnedMediaProperty, OwnedMediaPlatform } from "@/lib/types";
 
 type IconProps = { className?: string; style?: React.CSSProperties };
@@ -44,10 +45,7 @@ const METRIC_PLATFORMS = PLATFORMS.filter(p => p.key !== "website");
 const CADENCE_FIELDS = ["posts", "reels", "carousels", "stories", "articles", "newsletters", "videos"];
 const PRICING_FIELDS = ["post", "reel", "story", "collab", "carousel", "newsletter", "video"];
 
-const CATEGORIES = [
-  "Meme Page", "News & Media", "Entertainment", "Finance", "Technology",
-  "Lifestyle", "Sports", "Food", "Travel", "Education", "Community", "Other",
-];
+const CATEGORIES = [...CONTENT_CATEGORIES];
 
 interface FormState {
   id?: string;

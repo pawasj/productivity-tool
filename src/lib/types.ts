@@ -58,6 +58,13 @@ export const MODULE_ROUTES: Record<AppModule, string> = {
   admin_access: "/dashboard/admin",
 };
 
+// Shared content categories — used by Distribution Hub and Owned Media
+export const CONTENT_CATEGORIES = [
+  "Startups", "Memes", "Pop Culture", "News", "Regional", "Motivational",
+  "Clips", "Community", "Politics", "Cinema / OTT", "Cricket / Sports",
+  "Music", "Devotional", "Other",
+] as const;
+
 // ── Owned Media ────────────────────────────────────────────────────────────
 export type OwnedMediaPlatform = "instagram" | "linkedin" | "youtube" | "website" | "reddit" | "substack";
 

@@ -6,11 +6,9 @@ import { Search, Upload, Plus, X, Check, Edit2, RefreshCw, Users, Globe } from "
 import Papa from "papaparse";
 import type { Influencer } from "@/lib/types";
 
-const ALL_CATEGORIES = [
-  "Startups", "Memes", "Pop Culture", "News", "Regional", "Motivational",
-  "Clips", "Community", "Politics", "Cinema / OTT", "Cricket / Sports",
-  "Music", "Devotional", "Other",
-];
+import { CONTENT_CATEGORIES } from "@/lib/types";
+
+const ALL_CATEGORIES = [...CONTENT_CATEGORIES];
 
 const CREATOR_CATEGORIES = ALL_CATEGORIES;
 const PAGE_CATEGORIES = ALL_CATEGORIES;
