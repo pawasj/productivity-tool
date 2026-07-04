@@ -929,9 +929,19 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                         {String(creator?.full_name || "—")}
                       </td>
                       <td className="px-4 py-3">
-                        <p className="text-sm font-semibold text-slate-800">
-                          {(brief.total_budget ?? brief.budget) ? fmtL(Number(brief.total_budget ?? brief.budget)) : "—"}
-                        </p>
+                        {(() => {
+                          const val = Number(brief.total_budget ?? brief.budget) || 0;
+                          if (!val) return <p className="text-sm font-semibold text-slate-800">—</p>;
+                          const isBriefRetainer = String(brief.engagement_type || "") === "retainer";
+                          return isBriefRetainer ? (
+                            <div>
+                              <p className="text-sm font-semibold text-violet-700">{fmtL(val)}/mo</p>
+                              <p className="text-xs text-slate-400">{fmtL(val * 12)}/yr</p>
+                            </div>
+                          ) : (
+                            <p className="text-sm font-semibold text-slate-800">{fmtL(val)}</p>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs flex items-center gap-1 text-slate-500">
