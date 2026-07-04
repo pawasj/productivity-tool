@@ -131,6 +131,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
   const [showNarrative, setShowNarrative] = useState(true);
   const [error, setError] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
+  const [savingBrief, setSavingBrief] = useState(false);
   const [loadingBrief, setLoadingBrief] = useState(false);
   const [showWhatsApp, setShowWhatsApp] = useState(false);
 
@@ -251,6 +252,43 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
     );
   }
 
+  // ── Save brief fields only (no plan/narrative/status changes) ─────────────
+  async function saveBriefOnly() {
+    if (!brief.brand_name.trim()) { setError("Please enter a brand name."); return; }
+    setSavingBrief(true);
+    setError("");
+    const { data: { user } } = await supabase.auth.getUser();
+    const record: Record<string, unknown> = {
+      brand_name: brief.brand_name,
+      brand_poc: brief.poc_name,
+      poc_name: brief.poc_name,
+      engagement_type: brief.engagement_model,
+      budget: parseFloat(brief.total_budget) || 0,
+      total_budget: parseFloat(brief.total_budget) || 0,
+      industry: brief.industry,
+      campaign_type: brief.campaign_type,
+      target_audience: brief.target_audience,
+      campaign_objective: brief.campaign_objective,
+      timeline: brief.timeline,
+      retainer_start_month: brief.retainer_start_month || null,
+      retainer_pages_policy: brief.retainer_pages_policy || "can_repeat",
+    };
+    let err: string | null = null;
+    if (crmId) {
+      const { error } = await supabase.from("client_briefs").update(record).eq("id", crmId);
+      err = error?.message || null;
+    } else {
+      const { data, error } = await supabase.from("client_briefs")
+        .insert({ ...record, status: "draft", created_by: user?.id, source: "distro" })
+        .select().single();
+      err = error?.message || null;
+      if (data) setCrmId((data as Record<string, string>).id);
+    }
+    setSavingBrief(false);
+    if (err) { setError(`Failed to save brief: ${err}`); return; }
+    setSaveMsg("✓ Brief saved");
+  }
+
   // ── Save to CRM ────────────────────────────────────────────────────────────
   async function saveToCRM(planJson: PlanRow[], narText: string, existingId?: string): Promise<string | null> {
     const { data: { user } } = await supabase.auth.getUser();
@@ -277,17 +315,18 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
       timeline: brief.timeline,
       media_plan_json: planJson,
       narrative_text: narText,
-      status: "draft",
       created_by: user?.id,
       source: "distro",
       retainer_start_month: brief.retainer_start_month || null,
       retainer_pages_policy: brief.retainer_pages_policy || "can_repeat",
     };
     if (existingId) {
+      // Update without touching status — re-saving must not reset a
+      // pitched/approved brief back to draft
       const { data } = await supabase.from("client_briefs").update(record).eq("id", existingId).select().single();
       return (data as Record<string, string> | null)?.id || existingId;
     }
-    const { data } = await supabase.from("client_briefs").insert(record).select().single();
+    const { data } = await supabase.from("client_briefs").insert({ ...record, status: "draft" }).select().single();
     const newId = (data as Record<string, string> | null)?.id || null;
     // Link brief back to the source lead in Sales Pipeline
     if (newId && sourceLeadId) {
@@ -727,6 +766,11 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
 
         {!approved && (
           <div className="mt-5 flex flex-wrap items-center gap-3">
+            <button onClick={saveBriefOnly} disabled={savingBrief || !brief.brand_name.trim()}
+              className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 text-white rounded-xl font-medium text-sm hover:bg-slate-900 disabled:opacity-50 transition-colors">
+              {savingBrief ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {savingBrief ? "Saving…" : "Save Brief"}
+            </button>
             <button
               onClick={() => { if (!brief.brand_name.trim()) { setError("Please enter a brand name."); return; } setError(""); setPendingMargin(String(agencyMargin)); setShowMarginModal(true); }}
               disabled={generatingPlan}
