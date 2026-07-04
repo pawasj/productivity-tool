@@ -235,7 +235,6 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                 <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">Email</th>
                 <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">Role</th>
                 <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">Joined</th>
-                <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">Module Access</th>
                 <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">Actions</th>
               </tr>
             </thead>
@@ -269,27 +268,17 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                   </td>
                   <td className="px-5 py-3 text-sm text-slate-400">{formatDate(member.created_at)}</td>
                   <td className="px-5 py-3">
-                    {member.role === "admin" ? (
-                      <span className="text-xs text-indigo-400">All modules</span>
-                    ) : (member.access_levels?.length ?? 0) > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {(member.access_levels || []).map(mod => (
-                          <span key={mod} className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-medium">
-                            {MODULE_LABELS[mod as AppModule]}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-slate-300 italic">No access set</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => { setEditingAccess(member); setEditAccessLevels(member.access_levels || []); }}
-                        className="text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                        className="text-xs text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                        title="View & edit module access"
                       >
-                        <Settings className="w-3 h-3" /> Access
+                        <Settings className="w-3 h-3" />
+                        Access
+                        <span className="text-[10px] font-semibold text-indigo-500">
+                          {member.role === "admin" ? "All" : (member.access_levels?.length ?? 0)}
+                        </span>
                       </button>
                       {member.id !== currentUser.id && (
                         <>
