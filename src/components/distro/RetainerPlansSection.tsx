@@ -131,8 +131,8 @@ export default function RetainerPlansSection({
         return {
           ...r,
           total_cost: agencyCost,
-          client_rate: Math.round(r.rate * (1 + margin / 100)),
-          client_total: Math.round(agencyCost * (1 + margin / 100)),
+          client_rate: Math.round(r.rate / (1 - Math.min(margin, 99) / 100)),
+          client_total: Math.round(agencyCost / (1 - Math.min(margin, 99) / 100)),
         };
       });
 
@@ -418,7 +418,7 @@ export default function RetainerPlansSection({
 
 function MarginBreakdown({ budget, margin }: { budget: number; margin: number }) {
   if (!budget || !margin) return null;
-  const agencySpend = Math.round(budget / (1 + margin / 100));
+  const agencySpend = Math.round(budget * (1 - margin / 100));
   return (
     <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 space-y-1.5">
       <div className="flex justify-between">

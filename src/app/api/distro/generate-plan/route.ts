@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const budget = parseFloat(brief.total_budget || brief.budget || "0") || 0;
     const margin = typeof agency_margin === "number" ? agency_margin : 30;
     // Budget is client-facing (inclusive of margin) — reverse-calculate agency spend
-    const targetSpend = Math.round(budget / (1 + margin / 100));
+    const targetSpend = Math.round(budget * (1 - margin / 100));
     const numPages = parseInt(brief.num_pages || "0") || 0;
     const numDeliverables = parseInt(brief.num_deliverables || "1") || 1;
 
@@ -235,7 +235,7 @@ Return ONLY valid JSON — no markdown, no explanation:
       usedFallback: !hasDB,
       trimmed: capped.length < plan.length ? plan.length - capped.length : 0,
       agency_spend: spend,
-      client_cost: Math.round(spend * (1 + margin / 100)),
+      client_cost: margin < 100 ? Math.round(spend / (1 - margin / 100)) : spend,
     });
   } catch (err: unknown) {
     console.error("generate-plan error:", err);

@@ -362,8 +362,8 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
       // This means sum of client_totals ≈ total_budget entered by user
       const plan: PlanRow[] = (json.plan || []).map((r: Omit<PlanRow, "client_rate" | "client_total">) => {
         const agencyCost = r.total_cost || (r.rate * r.quantity);
-        const clientRate = Math.round(r.rate * (1 + margin / 100));
-        const clientTotal = Math.round(agencyCost * (1 + margin / 100));
+        const clientRate = Math.round(r.rate / (1 - Math.min(margin, 99) / 100));
+        const clientTotal = Math.round(agencyCost / (1 - Math.min(margin, 99) / 100));
         return { ...r, total_cost: agencyCost, client_rate: clientRate, client_total: clientTotal };
       });
 
@@ -1341,7 +1341,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                 (() => {
                   const budget = Number(brief.total_budget) || 0;
                   const m = Number(pendingMargin) || 0;
-                  const agencySpend = Math.round(budget / (1 + m / 100));
+                  const agencySpend = Math.round(budget * (1 - m / 100));
                   const agencyEarning = budget - agencySpend;
                   return (
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm space-y-2">
