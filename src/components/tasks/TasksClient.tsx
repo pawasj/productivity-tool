@@ -64,7 +64,8 @@ export default function TasksClient({ userId, verticals, members: initialMembers
       vertical_id: form.vertical_id || (verticals[0]?.id ?? null),
       user_id: userId,
       completed: false,
-      assigned_to: form.assigned_to.length ? form.assigned_to : null,
+      // Tasks are always assigned — default to self so they stay in this panel
+      assigned_to: form.assigned_to.length ? form.assigned_to : [userId],
     }).select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name)").single();
     if (data) {
       setTasks(prev => [data as ExtTodo, ...prev]);

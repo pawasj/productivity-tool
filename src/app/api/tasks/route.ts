@@ -11,6 +11,7 @@ export async function GET() {
     service
       .from("todos")
       .select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name)")
+      .not("assigned_to", "is", null)   // team tasks only — personal to-dos live in /dashboard/todos
       .order("created_at", { ascending: false }),
     service
       .from("profiles")
