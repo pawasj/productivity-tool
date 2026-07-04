@@ -8,7 +8,7 @@ export default async function ClientsPage() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  await requireAccess("client_details");
+  const profile = await requireAccess("client_details");
 
   const svc = createServiceRoleClient();
   const [{ data: verticals }, { data: members }, { data: vendors }] = await Promise.all([
@@ -23,6 +23,7 @@ export default async function ClientsPage() {
       members={(members || []) as Profile[]}
       vendors={(vendors || []) as { id: string; name: string; type: string; service_type?: string; rate?: number }[]}
       userId={user.id}
+      isAdmin={profile.role === "admin"}
     />
   );
 }

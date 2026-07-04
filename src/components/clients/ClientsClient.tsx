@@ -39,6 +39,7 @@ interface Props {
   members: Profile[];
   vendors: VendorRow[];
   userId: string;
+  isAdmin: boolean;
 }
 
 const EMPTY: Omit<ExtClient, "id" | "created_at" | "updated_at" | "vertical"> = {
@@ -52,7 +53,7 @@ const EMPTY: Omit<ExtClient, "id" | "created_at" | "updated_at" | "vertical"> = 
 
 function fmt(n: number) { return `₹${n.toLocaleString("en-IN")}`; }
 
-export default function ClientsClient({ verticals, members, vendors, userId }: Props) {
+export default function ClientsClient({ verticals, members, vendors, userId, isAdmin }: Props) {
   const [clients, setClients] = useState<ExtClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -167,7 +168,8 @@ export default function ClientsClient({ verticals, members, vendors, userId }: P
       name: form.name, office_address: form.office_address, gst_number: form.gst_number,
       contact_name: form.contact_name, contact_phone: form.contact_phone, contact_email: form.contact_email,
       engagement_type: form.engagement_type,
-      amount: Number(form.amount) || 0, monthly_value: Number(form.monthly_value) || 0,
+      // Only admins may set/change client value — non-admin saves leave it untouched
+      ...(isAdmin ? { amount: Number(form.amount) || 0, monthly_value: Number(form.monthly_value) || 0 } : {}),
       deliverables: form.deliverables, vertical_id: form.vertical_id || null,
       status: form.status, notes: form.notes,
       poc_name: form.poc_name || null, poc_role: form.poc_role || null,
@@ -254,10 +256,12 @@ export default function ClientsClient({ verticals, members, vendors, userId }: P
         </div>
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: "Total Clients", value: clients.length, color: "text-violet-600" },
-            { label: "Active", value: clients.filter(c => c.status === "active").length, color: "text-emerald-600" },
-            { label: "One-time Revenue", value: fmt(totalRevenue), color: "text-blue-600" },
-            { label: "Monthly Retainer", value: `${fmt(totalMRR)}/mo`, color: "text-amber-600" },
+            { label: "Total Clients", value: clients.length as string | number, color: "text-violet-600" },
+            { label: "Active", value: clients.filter(c => c.status === "active").length as string | number, color: "text-emerald-600" },
+            ...(isAdmin ? [
+              { label: "One-time Revenue", value: fmt(totalRevenue) as string | number, color: "text-blue-600" },
+              { label: "Monthly Retainer", value: `${fmt(totalMRR)}/mo` as string | number, color: "text-amber-600" },
+            ] : []),
           ].map(s => (
             <div key={s.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
               <p className="text-xs text-slate-500">{s.label}</p>
@@ -310,18 +314,20 @@ export default function ClientsClient({ verticals, members, vendors, userId }: P
                         <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${c.engagement_type === "retainer" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
                           {c.engagement_type === "retainer" ? "Retainer" : "One-time"}
                         </span>
-                        {hasOfferings && (
+                        {hasOfferings && isAdmin && (
                           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${margin >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
                             {margin >= 0 ? "+" : ""}{margin.toFixed(0)}% margin
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xs font-semibold text-slate-700">
-                        {c.engagement_type === "retainer" ? `${fmt(c.monthly_value || 0)}/mo` : fmt(c.amount || 0)}
-                      </p>
-                    </div>
+                    {isAdmin && (
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-semibold text-slate-700">
+                          {c.engagement_type === "retainer" ? `${fmt(c.monthly_value || 0)}/mo` : fmt(c.amount || 0)}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </button>
               );
@@ -368,8 +374,8 @@ export default function ClientsClient({ verticals, members, vendors, userId }: P
                   </div>
                 </div>
 
-                {/* Profitability */}
-                {breakdown.length > 0 && (
+                {/* Profitability — admin only */}
+                {isAdmin && breakdown.length > 0 && (
                   <div className={`rounded-xl border p-5 ${margin >= 30 ? "bg-emerald-50 border-emerald-200" : margin >= 0 ? "bg-amber-50 border-amber-200" : "bg-rose-50 border-rose-200"}`}>
                     <div className="flex items-center gap-2 mb-3">
                       {margin >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-600" /> : <TrendingDown className="w-4 h-4 text-rose-600" />}
@@ -410,13 +416,15 @@ export default function ClientsClient({ verticals, members, vendors, userId }: P
                       <p className="text-xs text-slate-400">Type</p>
                       <p className="font-semibold text-slate-800 mt-0.5">{sc.engagement_type === "retainer" ? "Monthly Retainer" : "One-time"}</p>
                     </div>
-                    <div>
-                      <p className="text-xs text-slate-400">{sc.engagement_type === "retainer" ? "Monthly Value" : "Deal Value"}</p>
-                      <p className="font-semibold text-slate-800 mt-0.5">
-                        {fmt((sc.engagement_type === "retainer" ? sc.monthly_value : sc.amount) ?? 0)}
-                        {sc.engagement_type === "retainer" && "/mo"}
-                      </p>
-                    </div>
+                    {isAdmin && (
+                      <div>
+                        <p className="text-xs text-slate-400">{sc.engagement_type === "retainer" ? "Monthly Value" : "Deal Value"}</p>
+                        <p className="font-semibold text-slate-800 mt-0.5">
+                          {fmt((sc.engagement_type === "retainer" ? sc.monthly_value : sc.amount) ?? 0)}
+                          {sc.engagement_type === "retainer" && "/mo"}
+                        </p>
+                      </div>
+                    )}
                     {sc.deliverables && (
                       <div>
                         <p className="text-xs text-slate-400">Deliverables</p>
@@ -578,14 +586,16 @@ export default function ClientsClient({ verticals, members, vendors, userId }: P
                       <option value="retainer">Monthly Retainer</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      {form.engagement_type === "retainer" ? "Monthly Value (₹)" : "Deal Value (₹)"}
-                    </label>
-                    <input type="number" value={form.engagement_type === "retainer" ? (form.monthly_value || "") : (form.amount || "")}
-                      onChange={e => sf(form.engagement_type === "retainer" ? "monthly_value" : "amount", e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
-                  </div>
+                  {isAdmin && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        {form.engagement_type === "retainer" ? "Monthly Value (₹)" : "Deal Value (₹)"}
+                      </label>
+                      <input type="number" value={form.engagement_type === "retainer" ? (form.monthly_value || "") : (form.amount || "")}
+                        onChange={e => sf(form.engagement_type === "retainer" ? "monthly_value" : "amount", e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">Status</label>
                     <select value={form.status || "active"} onChange={e => sf("status", e.target.value)}
