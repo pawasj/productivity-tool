@@ -211,7 +211,7 @@ function AnalyticsPanel({ data, onClose }: { data: AnalyticsData; onClose: () =>
           </div>
 
           {/* Retainer vs One-time */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-violet-50 border border-violet-100 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Repeat2 className="w-4 h-4 text-violet-600" />

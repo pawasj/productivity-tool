@@ -334,7 +334,7 @@ export default function OwnedMediaClient() {
               {/* Metrics (manual) */}
               <div>
                 <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1">Metrics <span className="font-normal normal-case text-slate-400">(auto-scanned on Refresh · editable manually)</span></p>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {METRIC_PLATFORMS.map(pl => (
                     <div key={pl.key}>
                       <label className="block text-xs text-slate-500 mb-0.5">{pl.label} {pl.key === "youtube" || pl.key === "substack" ? "subs" : pl.key === "reddit" ? "members" : "followers"}</label>
@@ -350,7 +350,7 @@ export default function OwnedMediaClient() {
               {/* Cadence */}
               <div>
                 <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1">Cadence <span className="font-normal normal-case text-slate-400">(content pieces per week)</span></p>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {CADENCE_FIELDS.map(f => (
                     <div key={f}>
                       <label className="block text-xs text-slate-500 mb-0.5 capitalize">{f}</label>
@@ -366,7 +366,7 @@ export default function OwnedMediaClient() {
               {/* Pricing */}
               <div>
                 <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1">Pricing <span className="font-normal normal-case text-slate-400">(₹ per piece · syncs to Distro Hub rates)</span></p>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {PRICING_FIELDS.map(f => (
                     <div key={f}>
                       <label className="block text-xs text-slate-500 mb-0.5 capitalize">{f}</label>

@@ -144,7 +144,7 @@ export default function SalesReport({ verticals }: Props) {
       ) : (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {[
               { label: "Total Revenue", value: fmt(totalRevenue), sub: monthLabel, color: "bg-emerald-600" },
               { label: "Approved Deals", value: monthLeads.length, sub: `${onetimeLeads.length} one-time · ${retainerLeads.length} retainer`, color: "bg-blue-600" },
@@ -175,7 +175,7 @@ export default function SalesReport({ verticals }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Vertical Breakdown */}
             <div className="bg-white rounded-2xl border border-slate-200 p-5">
               <h3 className="font-semibold text-slate-900 mb-4">Revenue by Vertical</h3>

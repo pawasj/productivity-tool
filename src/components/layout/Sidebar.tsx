@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import {
@@ -9,6 +10,7 @@ import {
   LogOut, ChevronRight, Shield,
   MessageSquareDot, Building2, BarChart3, Users2, FileBarChart2, Share2,
   CheckSquare, IndianRupee, FlaskConical, Radio, ListTodo, Lightbulb,
+  Menu, X,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { canAccess } from "@/lib/access-client";
@@ -42,6 +44,10 @@ export default function Sidebar({ profile }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close the drawer whenever navigation happens
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -61,12 +67,34 @@ export default function Sidebar({ profile }: SidebarProps) {
   );
 
   return (
-    <aside className="w-60 bg-white border-r border-slate-200 flex flex-col h-full shrink-0">
+    <>
+      {/* Mobile top bar */}
+      <div className="md:hidden fixed top-0 inset-x-0 z-40 h-14 bg-white border-b border-slate-200 flex items-center justify-between px-3">
+        <button onClick={() => setMobileOpen(true)}
+          className="p-2.5 -ml-1 text-slate-600 hover:bg-slate-100 rounded-lg" aria-label="Open menu">
+          <Menu className="w-5 h-5" />
+        </button>
+        <Image src="/bcc-logo.png" alt="BCC Media Network" width={110} height={30} className="object-contain" priority />
+        <NotificationBell />
+      </div>
+
+      {/* Mobile drawer backdrop */}
+      {mobileOpen && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+      )}
+
+      <aside className={`fixed md:static inset-y-0 left-0 z-50 w-72 md:w-60 bg-white border-r border-slate-200 flex flex-col h-full shrink-0 transform transition-transform duration-200 md:transition-none ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}>
       {/* Brand */}
       <div className="px-4 py-3 border-b border-slate-100">
         <div className="flex items-center justify-between">
           <Image src="/bcc-logo.png" alt="BCC Media Network" width={130} height={36} className="object-contain" priority />
-          <NotificationBell />
+          <div className="flex items-center gap-1">
+            <span className="hidden md:block"><NotificationBell /></span>
+            <button onClick={() => setMobileOpen(false)}
+              className="md:hidden p-2 text-slate-400 hover:bg-slate-100 rounded-lg" aria-label="Close menu">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -134,6 +162,7 @@ export default function Sidebar({ profile }: SidebarProps) {
           Sign out
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

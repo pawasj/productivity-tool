@@ -109,7 +109,7 @@ export default function ExpenseReport({ verticals, userId }: Props) {
       ) : (
         <>
           {/* KPI */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white rounded-2xl border border-slate-200 p-5 col-span-1">
               <div className="w-8 h-8 bg-rose-600 rounded-lg mb-3" />
               <p className="text-xs text-slate-500">Total Expenses</p>

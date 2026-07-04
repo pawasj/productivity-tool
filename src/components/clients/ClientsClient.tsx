@@ -254,7 +254,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { label: "Total Clients", value: clients.length as string | number, color: "text-violet-600" },
             { label: "Active", value: clients.filter(c => c.status === "active").length as string | number, color: "text-emerald-600" },
@@ -271,9 +271,9 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Client List */}
-        <div className="flex flex-col w-80 border-r border-slate-200 bg-white overflow-hidden shrink-0">
+        <div className="flex flex-col w-full md:w-80 max-h-64 md:max-h-none border-b md:border-b-0 md:border-r border-slate-200 bg-white overflow-hidden shrink-0">
           <div className="p-3 border-b border-slate-100 space-y-2">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
@@ -384,7 +384,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
                         {margin >= 0 ? "+" : ""}{margin.toFixed(1)}% margin
                       </span>
                     </div>
-                    <div className="grid grid-cols-3 gap-3 mb-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                       {[
                         { label: "Revenue", value: fmt(revenue), cls: "text-slate-800" },
                         { label: "Total Cost", value: fmt(totalCost), cls: "text-rose-700" },
@@ -411,7 +411,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
                 {/* Engagement */}
                 <div className="bg-white rounded-xl border border-slate-100 p-5">
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Engagement</p>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <p className="text-xs text-slate-400">Type</p>
                       <p className="font-semibold text-slate-800 mt-0.5">{sc.engagement_type === "retainer" ? "Monthly Retainer" : "One-time"}</p>

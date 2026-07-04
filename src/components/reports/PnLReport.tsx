@@ -103,7 +103,7 @@ export default function PnLReport({ verticals }: Props) {
               <h3 className="text-white font-bold text-lg">Profit & Loss — {monthLabel}</h3>
             </div>
             <div className="p-6">
-              <div className="grid grid-cols-3 gap-6 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6">
                 <div className="text-center p-5 bg-emerald-50 rounded-2xl border border-emerald-100">
                   <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Total Revenue</p>
                   <p className="text-3xl font-bold text-emerald-700 mt-2">{fmt(revenue)}</p>
