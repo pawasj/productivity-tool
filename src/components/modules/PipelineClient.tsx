@@ -435,7 +435,10 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
         ? row.data.vertical_id === filterVertical
         : String(row.data.vertical_id || "") === filterVertical);
       const matchPoc = !filterPoc || (row.kind === "lead" && row.data.our_poc_id === filterPoc);
-      const matchMonth = !filterMonth || (row.kind === "lead" && row.data.deal_month?.startsWith(filterMonth));
+      const matchMonth = !filterMonth || (
+        String(row.data.created_at || "").startsWith(filterMonth)
+        || (row.kind === "lead" && row.data.deal_month?.startsWith(filterMonth))
+      );
       const matchEngagement = !filterEngagement || (row.kind === "lead" && (row.data.engagement_type || "one_time") === filterEngagement);
       return matchSearch && matchType && matchStatus && matchVertical && matchPoc && matchMonth && matchEngagement;
     });
@@ -697,13 +700,14 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
           {verticals.map(v => <option key={v.id} value={v.id}>{v.icon} {v.name}</option>)}
         </select>
 
-        {availableMonths.length > 0 && (
-          <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
-            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600">
-            <option value="">All Months</option>
-            {availableMonths.map(m => <option key={m} value={m}>{new Date(m + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</option>)}
-          </select>
-        )}
+        <div className="flex items-center gap-1">
+          <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
+            title="Filter by month entered"
+            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600" />
+          {filterMonth && (
+            <button onClick={() => setFilterMonth("")} className="text-xs text-slate-400 hover:text-slate-600 px-1" title="Clear month">✕</button>
+          )}
+        </div>
 
         <select value={filterPoc} onChange={e => setFilterPoc(e.target.value)}
           className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600">
@@ -729,9 +733,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 sticky left-0 bg-slate-50 z-20 w-24">Type</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 sticky left-24 bg-slate-50 z-20 min-w-[180px]">Company / Client</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500">Contact</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500">Vertical</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500">Engagement</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500">POC</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500">Value</th>
@@ -795,26 +797,11 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-sm text-slate-700">{lead.contact_name}</p>
-                          {lead.contact_email && <p className="text-xs text-slate-400">{lead.contact_email}</p>}
-                          {lead.contact_phone && <p className="text-xs text-slate-400">{lead.contact_phone}</p>}
-                        </td>
-                        <td className="px-4 py-3">
                           {vertical && (
                             <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap"
                               style={{ backgroundColor: `${vertical.color}20`, color: vertical.color }}>
                               {vertical.icon} {vertical.name}
                             </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {isRetainer && lead.monthly_value ? (
-                            <div>
-                              <span className="text-xs font-semibold text-violet-700">{fmtL(lead.monthly_value)}/mo</span>
-                              <p className="text-xs text-slate-400">{fmtL(lead.monthly_value * 12)}/yr</p>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-400">—</span>
                           )}
                         </td>
                         <td className="px-4 py-3">
@@ -829,7 +816,14 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                           {(lead.our_poc as Profile)?.full_name || "—"}
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-sm text-slate-800 font-semibold">{lead.deal_value ? fmtL(lead.deal_value) : "—"}</p>
+                          {isRetainer && lead.monthly_value ? (
+                            <div>
+                              <p className="text-sm font-semibold text-violet-700">{fmtL(lead.monthly_value)}/mo</p>
+                              <p className="text-xs text-slate-400">{fmtL(lead.monthly_value * 12)}/yr</p>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-800 font-semibold">{lead.deal_value ? fmtL(lead.deal_value) : "—"}</p>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {lead.deal_month ? (
@@ -885,8 +879,10 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                                 <ExternalLink className="w-3 h-3" /> Brief
                               </button>
                             )}
-                            <button onClick={() => openEdit(lead)} className="p-1.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors" title="Edit">
-                              <Edit3 className="w-3.5 h-3.5" />
+                            <button onClick={() => openEdit(lead)}
+                              className="flex items-center gap-1 text-xs px-2.5 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium whitespace-nowrap"
+                              title="Open & edit lead details">
+                              <Edit3 className="w-3 h-3" /> Open
                             </button>
                             <button onClick={() => deleteLead(lead.id)} className="p-1.5 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-colors" title="Delete">
                               <Trash2 className="w-3.5 h-3.5" />
@@ -911,13 +907,9 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                       </td>
                       <td className="px-4 py-3 sticky left-24 bg-white group-hover:bg-violet-50/20 z-10">
                         <p className="font-semibold text-slate-900 text-sm">{String(brief.brand_name || "—")}</p>
-                        <p className="text-xs text-slate-400 capitalize">{String(brief.campaign_type || "")}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-xs text-slate-600">{String(brief.industry || "—")}</p>
-                        {Boolean(brief.target_audience) && (
-                          <p className="text-xs text-slate-400 max-w-36 truncate">{String(brief.target_audience)}</p>
-                        )}
+                        <p className="text-xs text-slate-400 capitalize">
+                          {[String(brief.campaign_type || ""), String(brief.industry || "")].filter(Boolean).join(" · ")}
+                        </p>
                       </td>
                       <td className="px-4 py-3">
                         <select value={String(brief.vertical_id || "")}
@@ -926,9 +918,6 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                           <option value="">No vertical</option>
                           {verticals.map(v => <option key={v.id} value={v.id}>{v.icon} {v.name}</option>)}
                         </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs text-slate-400">—</span>
                       </td>
                       <td className="px-4 py-3">
                         <select value={briefStatus} onChange={e => updateBriefStatus(String(brief.id), e.target.value)}
