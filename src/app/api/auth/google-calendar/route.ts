@@ -6,7 +6,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "GOOGLE_CLIENT_ID not configured" }, { status: 500 });
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.get("host")}`;
+  // Pin the canonical domain — deriving from the Host header sends a
+  // www./non-www variant Google hasn't registered (redirect_uri_mismatch)
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://bombaycontentcompany.com";
   const redirectUri = `${baseUrl}/api/auth/google-calendar/callback`;
 
   const params = new URLSearchParams({

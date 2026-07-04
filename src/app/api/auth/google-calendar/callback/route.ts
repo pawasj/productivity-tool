@@ -6,7 +6,8 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code");
   const error = searchParams.get("error");
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.get("host")}`;
+  // Must match the redirect_uri used in the authorize request exactly
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://bombaycontentcompany.com";
 
   if (error || !code) {
     return NextResponse.redirect(`${baseUrl}/dashboard/profile?cal_error=access_denied`);
