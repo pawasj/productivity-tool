@@ -75,6 +75,9 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [teamLeaves, setTeamLeaves] = useState<LeaveApplication[]>([]);
   const [saving, setSaving] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPw, setChangingPw] = useState(false);
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [showAccountNumber, setShowAccountNumber] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
@@ -131,6 +134,18 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
       .order("created_at", { ascending: false });
     const myTeam = members.filter(m => m.reporting_manager_id === profile.id).map(m => m.id);
     setTeamLeaves(((data || []) as LeaveApplication[]).filter(l => myTeam.includes(l.user_id)));
+  }
+
+  async function changePassword() {
+    if (newPassword.length < 6 || newPassword !== confirmPassword) return;
+    setChangingPw(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setChangingPw(false);
+    if (error) flash("error", error.message);
+    else {
+      flash("success", "Password updated — use it on your next login");
+      setNewPassword(""); setConfirmPassword("");
+    }
   }
 
   function flash(type: "success" | "error", text: string) {
@@ -335,6 +350,25 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
                 </div>
               )}
               <SaveButton onClick={saveProfile} saving={saving} />
+            </Section>
+
+            <Section title="Change Password" icon={CreditCard}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="New Password">
+                  <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                    placeholder="Minimum 6 characters" className={inputCls} autoComplete="new-password" />
+                </Field>
+                <Field label="Confirm New Password">
+                  <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password" className={inputCls} autoComplete="new-password" />
+                </Field>
+              </div>
+              <button onClick={changePassword} disabled={changingPw || newPassword.length < 6 || newPassword !== confirmPassword}
+                className="mt-3 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-900 disabled:opacity-50">
+                {changingPw ? "Updating…" : "Update Password"}
+              </button>
+              {newPassword && newPassword.length < 6 && <p className="text-xs text-amber-600 mt-1">Password must be at least 6 characters.</p>}
+              {newPassword && confirmPassword && newPassword !== confirmPassword && <p className="text-xs text-rose-500 mt-1">Passwords do not match.</p>}
             </Section>
           </div>
         )}

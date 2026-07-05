@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import {
   Briefcase, CheckSquare, ListTodo, Lightbulb, Loader2, ArrowRight, PhoneCall,
+  CalendarClock, ClipboardCheck, ExternalLink,
 } from "lucide-react";
 import type { Vertical, Todo, Idea, Profile } from "@/lib/types";
 import { canAccess } from "@/lib/access-client";
@@ -41,6 +42,8 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
   const [briefs, setBriefs] = useState<BriefLite[]>([]);
   const [todos, setTodos] = useState<TodoLite[]>([]);
   const [ideas, setIdeas] = useState<Idea[]>([]);
+  const [pendingLeaves, setPendingLeaves] = useState<Array<{ id: string; leave_type: string; from_date: string; to_date: string; days: number; profiles?: { full_name?: string } }>>([]);
+  const [meetings, setMeetings] = useState<Array<{ id: string; summary?: string; start_time: string }>>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,7 +58,20 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
     setTodos((t.data || []) as TodoLite[]);
     setIdeas((i.data || []) as Idea[]);
     setLoading(false);
-  }, []);
+
+    // Secondary widgets — leave approvals (managers/admins) + upcoming meetings
+    fetch("/api/dashboard/pending-leaves").then(r => r.json())
+      .then(j => setPendingLeaves(j.data || [])).catch(() => {});
+    const weekAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    supabase.from("calendar_events")
+      .select("id, summary, start_time")
+      .eq("user_id", userId)
+      .gte("start_time", new Date().toISOString())
+      .lte("start_time", weekAhead)
+      .order("start_time")
+      .limit(5)
+      .then(({ data }) => setMeetings((data || []) as typeof meetings));
+  }, [userId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -87,6 +103,52 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
           {showTasks && <Kpi label="Open Team Tasks" value={String(teamTasks.length)} sub="across all members" color="bg-blue-600" onClick={() => router.push("/dashboard/tasks")} />}
           <Kpi label="My To-Dos" value={String(myTodos.length)} sub="pending personal items" color="bg-teal-600" onClick={() => router.push("/dashboard/todos")} />
           {showIdeas && <Kpi label="Ideas Captured" value={String(ideas.length)} sub="team idea dump" color="bg-amber-500" onClick={() => router.push("/dashboard/ideas")} />}
+        </div>
+      )}
+
+      {/* Leave approvals + upcoming meetings */}
+      {!focusVerticalId && (pendingLeaves.length > 0 || meetings.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {pendingLeaves.length > 0 && (
+            <button onClick={() => router.push("/dashboard/profile")}
+              className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-2 mb-2">
+                <ClipboardCheck className="w-4 h-4 text-amber-600" />
+                <p className="text-sm font-bold text-amber-800">Leave Approvals Pending</p>
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white bg-amber-500">{pendingLeaves.length}</span>
+                <ArrowRight className="w-3.5 h-3.5 text-amber-400 ml-auto" />
+              </div>
+              <div className="space-y-1">
+                {pendingLeaves.slice(0, 3).map(l => (
+                  <p key={l.id} className="text-xs text-amber-800">
+                    <span className="font-semibold">{l.profiles?.full_name || "Member"}</span>
+                    {" — "}{l.leave_type} · {l.days} day{l.days !== 1 ? "s" : ""} from {new Date(l.from_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                  </p>
+                ))}
+                {pendingLeaves.length > 3 && <p className="text-[11px] text-amber-500">+{pendingLeaves.length - 3} more…</p>}
+              </div>
+            </button>
+          )}
+          {meetings.length > 0 && (
+            <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer"
+              className="bg-sky-50 border border-sky-200 rounded-2xl p-4 hover:shadow-md transition-shadow block">
+              <div className="flex items-center gap-2 mb-2">
+                <CalendarClock className="w-4 h-4 text-sky-600" />
+                <p className="text-sm font-bold text-sky-800">Upcoming Meetings</p>
+                <ExternalLink className="w-3 h-3 text-sky-400 ml-auto" />
+              </div>
+              <div className="space-y-1">
+                {meetings.slice(0, 3).map(m => (
+                  <p key={m.id} className="text-xs text-sky-800">
+                    <span className="font-semibold">
+                      {new Date(m.start_time).toLocaleString("en-IN", { weekday: "short", hour: "numeric", minute: "2-digit" })}
+                    </span>
+                    {" — "}{m.summary || "Untitled meeting"}
+                  </p>
+                ))}
+              </div>
+            </a>
+          )}
         </div>
       )}
 
