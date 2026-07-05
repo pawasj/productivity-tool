@@ -191,7 +191,7 @@ export default function DashboardClient({ verticals: initialVerticals, profile, 
                   <p className="text-sm text-slate-400">All verticals at a glance</p>
                 </div>
               </div>
-              <CollatedOverview verticals={verticals} userId={userId} />
+              <CollatedOverview verticals={verticals} userId={userId} profile={profile} />
             </>
           ) : current ? (
             <>
@@ -206,7 +206,7 @@ export default function DashboardClient({ verticals: initialVerticals, profile, 
                   <p className="text-sm text-slate-400">Everything in this vertical, auto-collated — add items in their own panels</p>
                 </div>
               </div>
-              <CollatedOverview verticals={verticals} userId={userId} focusVerticalId={current.id} />
+              <CollatedOverview verticals={verticals} userId={userId} profile={profile} focusVerticalId={current.id} />
             </>
           ) : null}
         </div>

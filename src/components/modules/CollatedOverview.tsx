@@ -6,13 +6,15 @@ import { useRouter } from "next/navigation";
 import {
   Briefcase, CheckSquare, ListTodo, Lightbulb, Loader2, ArrowRight, PhoneCall,
 } from "lucide-react";
-import type { Vertical, Todo, Idea } from "@/lib/types";
+import type { Vertical, Todo, Idea, Profile } from "@/lib/types";
+import { canAccess } from "@/lib/access-client";
 
 const supabase = createClient();
 
 interface Props {
   verticals: Vertical[];
   userId: string;
+  profile: Profile | null;
   focusVerticalId?: string;   // when set, show only this vertical (expanded)
 }
 
@@ -29,7 +31,10 @@ function fmtL(n: number) {
 
 const ACTIVE_STATUSES = ["draft", "pitched", "planning", "negotiation", "approved", "live"];
 
-export default function CollatedOverview({ verticals, userId, focusVerticalId }: Props) {
+export default function CollatedOverview({ verticals, userId, profile, focusVerticalId }: Props) {
+  const showPipeline = canAccess(profile, "sales_pipeline");
+  const showTasks = canAccess(profile, "tasks");
+  const showIdeas = canAccess(profile, "idea_dump");
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<LeadLite[]>([]);
@@ -71,17 +76,17 @@ export default function CollatedOverview({ verticals, userId, focusVerticalId }:
   const pipelineValue = activeLeads.reduce((s, l) => s + (l.engagement_type === "retainer" ? (l.monthly_value || 0) : (l.deal_value || 0)), 0)
     + activeBriefs.reduce((s, b) => s + (Number(b.total_budget ?? b.budget) || 0), 0);
   const myTodos = todos.filter(t => t.user_id === userId && !t.assigned_to);
-  const teamTasks = todos.filter(t => (t.assigned_to || []).length > 0 || t.user_id !== userId);
+  const teamTasks = todos.filter(t => (t.assigned_to || []).length > 0);
 
   return (
     <div className="space-y-5">
       {/* Global KPI strip — only on the all-verticals view */}
       {!focusVerticalId && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Kpi label="Active Pipeline" value={fmtL(pipelineValue)} sub={`${activeLeads.length + activeBriefs.length} deals in play`} color="bg-indigo-600" onClick={() => router.push("/dashboard/pipeline")} />
-          <Kpi label="Open Team Tasks" value={String(teamTasks.length)} sub="across all members" color="bg-blue-600" onClick={() => router.push("/dashboard/tasks")} />
+          {showPipeline && <Kpi label="Active Pipeline" value={fmtL(pipelineValue)} sub={`${activeLeads.length + activeBriefs.length} deals in play`} color="bg-indigo-600" onClick={() => router.push("/dashboard/pipeline")} />}
+          {showTasks && <Kpi label="Open Team Tasks" value={String(teamTasks.length)} sub="across all members" color="bg-blue-600" onClick={() => router.push("/dashboard/tasks")} />}
           <Kpi label="My To-Dos" value={String(myTodos.length)} sub="pending personal items" color="bg-teal-600" onClick={() => router.push("/dashboard/todos")} />
-          <Kpi label="Ideas Captured" value={String(ideas.length)} sub="team idea dump" color="bg-amber-500" onClick={() => router.push("/dashboard/ideas")} />
+          {showIdeas && <Kpi label="Ideas Captured" value={String(ideas.length)} sub="team idea dump" color="bg-amber-500" onClick={() => router.push("/dashboard/ideas")} />}
         </div>
       )}
 
@@ -91,10 +96,10 @@ export default function CollatedOverview({ verticals, userId, focusVerticalId }:
         const vBriefs = briefs.filter(b => b.vertical_id === v.id && ACTIVE_STATUSES.includes(String(b.status || "draft")));
         const vValue = vLeads.reduce((s, l) => s + (l.engagement_type === "retainer" ? (l.monthly_value || 0) : (l.deal_value || 0)), 0)
           + vBriefs.reduce((s, b) => s + (Number(b.total_budget ?? b.budget) || 0), 0);
-        const vTasks = todos.filter(t => t.vertical_id === v.id && ((t.assigned_to || []).length > 0 || t.user_id !== userId));
+        const vTasks = todos.filter(t => t.vertical_id === v.id && (t.assigned_to || []).length > 0);
         const vMyTodos = todos.filter(t => t.vertical_id === v.id && t.user_id === userId && !t.assigned_to);
         const vIdeas = ideas.filter(i => i.vertical_id === v.id);
-        const isEmpty = vLeads.length + vBriefs.length + vTasks.length + vMyTodos.length + vIdeas.length === 0;
+        const isEmpty = (showPipeline ? vLeads.length + vBriefs.length : 0) + (showTasks ? vTasks.length : 0) + vMyTodos.length + (showIdeas ? vIdeas.length : 0) === 0;
         if (isEmpty && !focusVerticalId) return null;
 
         return (
@@ -104,12 +109,12 @@ export default function CollatedOverview({ verticals, userId, focusVerticalId }:
                 <span className="text-lg">{v.icon}</span>
                 <h3 className="font-bold text-slate-900">{v.name}</h3>
               </div>
-              {vValue > 0 && <span className="text-sm font-bold" style={{ color: v.color }}>{fmtL(vValue)} in pipeline</span>}
+              {showPipeline && vValue > 0 && <span className="text-sm font-bold" style={{ color: v.color }}>{fmtL(vValue)} in pipeline</span>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-slate-100">
               {/* Pipeline */}
-              <Section title="Sales Pipeline" icon={Briefcase} color="#6366f1" count={vLeads.length + vBriefs.length}
+              {showPipeline && <Section title="Sales Pipeline" icon={Briefcase} color="#6366f1" count={vLeads.length + vBriefs.length}
                 onOpen={() => router.push("/dashboard/pipeline")}>
                 {[...vLeads.map(l => ({ id: l.id, name: l.company_name, meta: l.status, value: l.engagement_type === "retainer" ? l.monthly_value : l.deal_value })),
                   ...vBriefs.map(b => ({ id: b.id, name: b.brand_name, meta: String(b.status || "draft"), value: Number(b.total_budget ?? b.budget) || 0 }))]
@@ -120,10 +125,10 @@ export default function CollatedOverview({ verticals, userId, focusVerticalId }:
                       {item.value ? <span className="text-xs font-semibold text-slate-600">{fmtL(item.value)}</span> : null}
                     </div>
                   ))}
-              </Section>
+              </Section>}
 
               {/* Team tasks */}
-              <Section title="Team Tasks" icon={CheckSquare} color="#3b82f6" count={vTasks.length}
+              {showTasks && <Section title="Team Tasks" icon={CheckSquare} color="#3b82f6" count={vTasks.length}
                 onOpen={() => router.push("/dashboard/tasks")}>
                 {vTasks.slice(0, 4).map(t => (
                   <div key={t.id} className="flex items-center gap-1.5 py-1">
@@ -131,7 +136,7 @@ export default function CollatedOverview({ verticals, userId, focusVerticalId }:
                     <span className="text-xs text-slate-700 truncate">{t.title}</span>
                   </div>
                 ))}
-              </Section>
+              </Section>}
 
               {/* My to-dos */}
               <Section title="My To-Dos" icon={ListTodo} color="#0d9488" count={vMyTodos.length}
@@ -148,14 +153,14 @@ export default function CollatedOverview({ verticals, userId, focusVerticalId }:
               </Section>
 
               {/* Ideas */}
-              <Section title="Ideas" icon={Lightbulb} color="#f59e0b" count={vIdeas.length}
+              {showIdeas && <Section title="Ideas" icon={Lightbulb} color="#f59e0b" count={vIdeas.length}
                 onOpen={() => router.push("/dashboard/ideas")}>
                 {vIdeas.slice(0, 3).map(i => (
                   <p key={i.id} className="text-xs text-slate-600 py-1 line-clamp-2 leading-snug">
                     💡 {i.content}
                   </p>
                 ))}
-              </Section>
+              </Section>}
             </div>
           </div>
         );
