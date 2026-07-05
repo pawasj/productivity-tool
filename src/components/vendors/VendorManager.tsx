@@ -27,7 +27,7 @@ const VENDOR_SPECS = [
   "Social Media Management", "Production & Video Shoots", "Editing", "Design",
   "UI / UX", "Tech Development", "Photography", "Copywriting & Content",
   "PR & Communications", "Event Management", "Influencer Outreach",
-  "SEO / SEM", "Performance Marketing", "Strategy & Consulting", "Other",
+  "SEO / SEM", "Performance Marketing", "Strategy & Consulting", "Distribution", "Other",
 ];
 
 const INTERN_SPECS = [
