@@ -30,7 +30,8 @@ function fmtL(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
-const ACTIVE_STATUSES = ["draft", "pitched", "planning", "negotiation", "approved", "live"];
+// Pipeline value = deals still in play (approved/live are revenue, not pipeline)
+const ACTIVE_STATUSES = ["draft", "pitched", "planning", "negotiation"];
 
 export default function CollatedOverview({ verticals, userId, profile, focusVerticalId }: Props) {
   const showPipeline = canAccess(profile, "sales_pipeline");

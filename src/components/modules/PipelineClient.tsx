@@ -377,28 +377,40 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
   // ── Derived stats ──────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     // Revenue is counted ONLY at "approved" stage
+    const leadVal = (l: Lead) => l.engagement_type === "retainer" ? (l.monthly_value || 0) : (l.deal_value || 0);
+    const briefVal = (b: Record<string, unknown>) => Number(b.total_budget ?? b.budget) || 0;
+
     const approvedLeads = leads.filter(l => l.status === "approved");
-    const activeLeads = leads.filter(l => !["approved", "lost", "completed"].includes(l.status));
+    // Pipeline = everything still in play; approved/live are revenue, not pipeline
+    const activeLeads = leads.filter(l => !["approved", "live", "lost", "completed"].includes(l.status));
+    const activeBriefs = briefs.filter(b => !["approved", "live", "lost", "completed"].includes(String(b.status || "draft")));
     const retainerLeads = leads.filter(l => l.engagement_type === "retainer" && l.status === "approved");
 
     const approvedBriefs = briefs.filter(b => ["approved", "live", "completed"].includes(String(b.status || "")));
 
-    const totalPipeline = activeLeads.reduce((s, l) => s + (l.deal_value || 0), 0);
-    const approvedRevenue = approvedLeads.reduce((s, l) => s + (l.deal_value || 0), 0)
-      + approvedBriefs.reduce((s, b) => s + (Number(b.total_budget ?? b.budget) || 0), 0);
+    const totalPipeline = activeLeads.reduce((s, l) => s + leadVal(l), 0)
+      + activeBriefs.reduce((s, b) => s + briefVal(b), 0);
     const retainerMRR = retainerLeads.reduce((s, l) => s + (l.monthly_value || 0), 0);
 
+    // Approved Revenue = approved in the current running month
     const thisMonth = currentMonthStr().slice(0, 7);
-    const thisMonthApproved = approvedLeads
-      .filter(l => l.deal_month?.startsWith(thisMonth) || l.updated_at.startsWith(thisMonth))
-      .reduce((s, l) => s + (l.deal_value || 0), 0);
+    const monthApprovedLeads = approvedLeads.filter(l =>
+      (l.approved_at || l.deal_month || l.updated_at || "").startsWith(thisMonth));
+    const monthApprovedBriefs = approvedBriefs.filter(b =>
+      String(b.updated_at || b.created_at || "").startsWith(thisMonth));
+    const approvedRevenue = monthApprovedLeads.reduce((s, l) => s + leadVal(l), 0)
+      + monthApprovedBriefs.reduce((s, b) => s + briefVal(b), 0);
+
+    // All-time approved (leads + briefs)
+    const thisMonthApproved = approvedLeads.reduce((s, l) => s + leadVal(l), 0)
+      + approvedBriefs.reduce((s, b) => s + briefVal(b), 0);
 
     const qualifiedLeads = leads.filter(l => l.status !== "draft");
     return {
       activePipeline: totalPipeline,
       approvedRevenue,
       retainerMRR,
-      activeCount: activeLeads.length,
+      activeCount: activeLeads.length + activeBriefs.length,
       approvedCount: approvedLeads.length,
       thisMonthApproved,
       winRate: qualifiedLeads.length > 0 ? Math.round((approvedLeads.length / qualifiedLeads.length) * 100) : 0,
@@ -617,12 +629,12 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
           <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
             <p className="text-xs font-medium text-slate-500 mb-1">Active Pipeline</p>
             <p className="text-xl font-bold text-slate-800">{fmtL(stats.activePipeline)}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{stats.activeCount} open leads</p>
+            <p className="text-xs text-slate-400 mt-0.5">{stats.activeCount} open deals</p>
           </div>
           <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
             <p className="text-xs font-medium text-emerald-600 mb-1">Approved Revenue</p>
             <p className="text-xl font-bold text-emerald-800">{fmtL(stats.approvedRevenue)}</p>
-            <p className="text-xs text-emerald-400 mt-0.5">{stats.approvedCount} deal{stats.approvedCount !== 1 ? "s" : ""} approved</p>
+            <p className="text-xs text-emerald-400 mt-0.5">approved this month</p>
           </div>
           <div className="bg-violet-50 border border-violet-100 rounded-xl px-4 py-3">
             <p className="text-xs font-medium text-violet-600 mb-1">Retainer MRR</p>
@@ -630,9 +642,9 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
             <p className="text-xs text-violet-400 mt-0.5">{fmtL(stats.retainerMRR * 12)} ARR</p>
           </div>
           <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
-            <p className="text-xs font-medium text-indigo-600 mb-1">This Month</p>
+            <p className="text-xs font-medium text-indigo-600 mb-1">Total Approved</p>
             <p className="text-xl font-bold text-indigo-800">{fmtL(stats.thisMonthApproved)}</p>
-            <p className="text-xs text-indigo-400 mt-0.5">Approved this month</p>
+            <p className="text-xs text-indigo-400 mt-0.5">{stats.approvedCount} deal{stats.approvedCount !== 1 ? "s" : ""} all-time</p>
           </div>
           <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
             <p className="text-xs font-medium text-amber-600 mb-1">Win Rate</p>
