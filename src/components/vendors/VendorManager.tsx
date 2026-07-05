@@ -33,7 +33,8 @@ const VENDOR_SPECS = [
 const INTERN_SPECS = [
   "Social Media", "Content Writing", "Graphic Design", "Video Editing",
   "Research & Analytics", "Client Servicing", "Business Development",
-  "Tech / Development", "Marketing", "Operations", "HR", "Other",
+  "Tech / Development", "Marketing", "Operations", "HR",
+  "Distribution", "Influencer Marketing", "Other",
 ];
 
 const INDIAN_STATES_SHORT = [
