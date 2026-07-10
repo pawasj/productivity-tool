@@ -69,6 +69,10 @@ jobs:
           rm -rf "$PARENT/nodejs-old"
           mv "$APP" "$PARENT/nodejs-old"
           mv "$STAGE" "$APP"
+          # Also update the runtime env file Passenger injects (it wins over
+          # .env.local), so ENV_FILE is the single source of truth for env.
+          CFG="$PARENT/public_html/.builds/config/.env"
+          if [ -f "$CFG" ]; then cp "$APP/.env.local" "$CFG"; fi
           touch "$APP/tmp/restart.txt"
           rm -rf "$PARENT/nodejs-old" "$HOME/bundle.tgz"
           echo ">> Deployed (atomic swap) and restarted."
