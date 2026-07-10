@@ -453,7 +453,10 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
       );
       const matchEngagement = !filterEngagement || (row.kind === "lead" && (row.data.engagement_type || "one_time") === filterEngagement);
       return matchSearch && matchType && matchStatus && matchVertical && matchPoc && matchMonth && matchEngagement;
-    });
+    }).sort((a, b) =>
+      // Newest entries first, leads and briefs interleaved by creation date
+      String(b.data.created_at || "").localeCompare(String(a.data.created_at || ""))
+    );
   }, [leads, briefs, search, filterType, filterStatus, filterVertical, filterPoc, filterMonth, filterEngagement]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
