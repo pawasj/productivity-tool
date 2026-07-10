@@ -7,11 +7,13 @@ function markdownToDocRequests(markdown: string, brandName: string) {
   let index = 1; // Docs API uses 1-based index
 
   function insert(text: string) {
+    if (!text) return; // empty insertText requests make the whole batch fail
     requests.push({ insertText: { location: { index }, text } });
     index += text.length;
   }
 
   function formatRange(startIndex: number, endIndex: number, bold?: boolean, italic?: boolean, fontSize?: number, foregroundColor?: { red: number; green: number; blue: number }) {
+    if (endIndex <= startIndex) return; // invalid ranges fail the whole batch
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fields: string[] = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,7 +69,7 @@ function markdownToDocRequests(markdown: string, brandName: string) {
       insert(text);
       setParagraphStyle(s, index, "HEADING_1");
     } else if (line.startsWith("- ") || line.startsWith("* ")) {
-      const text = line.replace(/^[-*] /, "") + "\n";
+      const text = (line.replace(/^[-*] /, "") || " ") + "\n";
       const s = index;
       insert(text);
       requests.push({ createParagraphBullets: { range: { startIndex: s, endIndex: index }, bulletPreset: "BULLET_DISC_CIRCLE_SQUARE" } });
@@ -127,11 +129,23 @@ export async function POST(req: NextRequest) {
     const requests = markdownToDocRequests(narrative, brand_name || "Campaign");
 
     if (requests.length > 0) {
-      await fetch(`https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`, {
+      const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`, {
         method: "POST",
         headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ requests }),
       });
+      if (!updateRes.ok) {
+        // Content write failed — fall back to inserting the raw text so the
+        // doc is never blank, then report if even that fails
+        const errText = await updateRes.text();
+        console.error("docs batchUpdate failed:", errText);
+        const fallbackRes = await fetch(`https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ requests: [{ insertText: { location: { index: 1 }, text: `${brand_name || "Campaign"} — Campaign Narrative\n\n${narrative}` } }] }),
+        });
+        if (!fallbackRes.ok) throw new Error(`Docs content write failed: ${errText.slice(0, 300)}`);
+      }
     }
 
     return NextResponse.json({ url: `https://docs.google.com/document/d/${documentId}/edit` });
