@@ -20,6 +20,8 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
           echo "=== EXTERNAL 443 from runner ==="
           curl -s -m 15 -o /dev/null -w "  https://bombaycontentcompany.com/login -> %{http_code} (%{time_total}s)\n" https://bombaycontentcompany.com/login 2>&1 || echo "  external 443 UNREACHABLE from runner"
+          echo "=== which GOOGLE_CLIENT_ID is the live app using? ==="
+          curl -s -m 15 -o /dev/null -w "%{redirect_url}\n" https://bombaycontentcompany.com/api/auth/google-calendar 2>&1 | grep -oE 'client_id=[0-9]+' || echo "  (no redirect captured)"
           SSHO="-p $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60"
           sshpass -e ssh $SSHO "$USERN@$HOSTN" 'bash -s' <<'EOF'
           D="$HOME/domains/bombaycontentcompany.com"
