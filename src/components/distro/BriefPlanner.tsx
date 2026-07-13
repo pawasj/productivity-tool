@@ -508,7 +508,14 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
       const res = await fetch("/api/distro/export-google-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brand_name: brief.brand_name, rows: planRows, margin: agencyMargin }),
+        body: JSON.stringify({
+          brand_name: brief.brand_name,
+          rows: planRows,
+          margin: agencyMargin,
+          num_pages: brief.num_pages,
+          num_deliverables: brief.num_deliverables,
+          campaign_objective: brief.campaign_objective,
+        }),
       });
       const json = await res.json();
       if (!res.ok || json.error) {
