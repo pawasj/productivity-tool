@@ -68,7 +68,7 @@ export const MODULE_ROUTES: Record<AppModule, string> = {
 export const CONTENT_CATEGORIES = [
   "Startups", "Memes", "Pop Culture", "News", "Regional", "Motivational",
   "Clips", "Community", "Politics", "Cinema / OTT", "Cricket / Sports",
-  "Music", "Devotional", "Marketing", "Other",
+  "Music", "Devotional", "Marketing", "Tech", "AI", "Sports", "Other",
 ] as const;
 
 // ── Owned Media ────────────────────────────────────────────────────────────
