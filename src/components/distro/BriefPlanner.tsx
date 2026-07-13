@@ -148,6 +148,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
   const [showMarginModal, setShowMarginModal] = useState(false);
   const [agencyMargin, setAgencyMargin] = useState<number>(30);
   const [pendingMargin, setPendingMargin] = useState("30");
+  const [pendingPlanType, setPendingPlanType] = useState<"full" | "indicative">("full");
 
   // Manual plan builder
   const [showManualBuilder, setShowManualBuilder] = useState(false);
@@ -336,7 +337,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
   }
 
   // ── Generate Plan (with margin) ───────────────────────────────────────────
-  async function generatePlan(margin: number) {
+  async function generatePlan(margin: number, planType: "full" | "indicative" = pendingPlanType) {
     if (!brief.brand_name.trim()) { setError("Please enter a brand name."); return; }
     setError(""); setGeneratingPlan(true); setShowMarginModal(false);
     try {
@@ -352,6 +353,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
           brief: { ...brief, deliverables: deliverablesList },
           influencers: infs || [],
           agency_margin: margin,
+          plan_type: planType,
         }),
       });
       const json = await res.json();
@@ -1313,6 +1315,21 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
               <button onClick={() => setShowMarginModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
             </div>
             <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-2">Plan Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => setPendingPlanType("full")}
+                    className={`p-3 rounded-xl border-2 text-left transition-colors ${pendingPlanType === "full" ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-blue-200"}`}>
+                    <p className="text-sm font-bold text-slate-800">Full Plan</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Pages & deliverables exactly as per the brief, within budget</p>
+                  </button>
+                  <button onClick={() => setPendingPlanType("indicative")}
+                    className={`p-3 rounded-xl border-2 text-left transition-colors ${pendingPlanType === "indicative" ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-blue-200"}`}>
+                    <p className="text-sm font-bold text-slate-800">Indicative Plan</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Sampler for the client — max 25 pages</p>
+                  </button>
+                </div>
+              </div>
               <p className="text-sm text-slate-600">
                 The <strong>total budget (₹{Number(brief.total_budget || 0).toLocaleString("en-IN")})</strong> entered in the brief is the <strong>client-facing amount — inclusive of your margin</strong>. Enter your margin below and we'll reverse-calculate what gets spent on media.
               </p>

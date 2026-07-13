@@ -6,7 +6,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { brief, influencers: allInfluencers, agency_margin, excluded_handles } = body;
+    const { brief, influencers: allInfluencers, agency_margin, excluded_handles, plan_type } = body;
     // Filter out handles used in previous retainer months when policy is "cannot_repeat"
     const excludedSet = new Set<string>(
       (excluded_handles || []).map((h: string) => h.replace(/^@/, "").toLowerCase().trim())
@@ -25,8 +25,14 @@ export async function POST(req: NextRequest) {
     const margin = typeof agency_margin === "number" ? agency_margin : 30;
     // Budget is client-facing (inclusive of margin) — reverse-calculate agency spend
     const targetSpend = Math.round(budget * (1 - margin / 100));
-    const numPages = parseInt(brief.num_pages || "0") || 0;
-    const numDeliverables = parseInt(brief.num_deliverables || "1") || 1;
+    const isIndicative = plan_type === "indicative";
+    let numPages = parseInt(brief.num_pages || "0") || 0;
+    let numDeliverables = parseInt(brief.num_deliverables || "1") || 1;
+    if (isIndicative) {
+      // Indicative plans are client samplers — hard cap at 25 pages
+      numPages = numPages > 0 ? Math.min(numPages, 25) : 25;
+      numDeliverables = Math.min(numDeliverables || numPages, numPages * 2);
+    }
 
     const hasDB = influencers && influencers.length > 0;
 
@@ -78,7 +84,9 @@ ${influencers
       ? `DELIVERABLE TYPES: You MUST ONLY use these deliverable types — [${allowedDeliverables.join(", ")}]. Do NOT use any other type.`
       : `DELIVERABLE TYPES: Choose the most suitable deliverable type for each handle (Reel, Story, Post, Carousel, Collab Post, or Combo).`;
 
-    const countInstruction = numPages > 0
+    const countInstruction = isIndicative
+      ? `- This is an INDICATIVE plan — a representative sampler for the client, NOT the full plan. Select AT MOST ${numPages} of the strongest, most category-relevant handles (fewer is fine). Prioritise variety across categories and reach tiers so the client gets a feel for the full plan.`
+      : numPages > 0
       ? `- Select EXACTLY ${numPages} handles from the database (no more, no less — if the DB has fewer, use all available)`
       : `- Select 5–20 handles depending on what the DB has — quality over quantity`;
 

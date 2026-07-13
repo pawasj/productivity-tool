@@ -127,27 +127,12 @@ export default function CampaignResults({ initialBriefId }: Props) {
         engagements: r.target_engagements?.toString() || "",
         impressions: r.target_impressions?.toString() || "",
       });
-      const savedRows = r.result_rows || [];
-      const normalise = (s: string) => (s || "").replace(/^@/, "").toLowerCase().trim();
-      const savedMap = new Map(savedRows.map((rr: ResultRow) => [normalise(rr.handle_name) + "|" + (rr.platform || "").toLowerCase(), rr]));
-
-      // Merge plan rows with saved data
-      const mergedPlanRows = planRows.map(p => ({
-        ...p,
-        ...(savedMap.get(normalise(p.handle_name) + "|" + (p.platform || "").toLowerCase()) || {}),
-      }));
-
-      // Include saved rows that are NOT in the media plan (submitted by unknown handles)
-      const planKeys = new Set(planRows.map(p => normalise(p.handle_name) + "|" + (p.platform || "").toLowerCase()));
-      const extraRows = savedRows.filter((rr: ResultRow) =>
-        !planKeys.has(normalise(rr.handle_name) + "|" + (rr.platform || "").toLowerCase())
-      );
-
-      setRows([...mergedPlanRows, ...extraRows]);
+      // Show only rows actually submitted/saved — never pre-fill from the plan
+      setRows(r.result_rows || []);
     } else {
       setResult(null);
       setTargets({ deliverables: "", views: "", reach: "", engagements: "", impressions: "" });
-      setRows(planRows.map(p => ({ ...p, live_link: "" })));
+      setRows([]);
     }
   }
 
