@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase";
 import {
   ListTodo, Plus, X, Check, Circle, Loader2, Trash2, Calendar, Flag,
-  Search, PhoneCall,
+  Search, PhoneCall, Pencil, Mail, MapPin, Building2, UserPlus,
 } from "lucide-react";
 import type { Todo, Vertical } from "@/lib/types";
 import { PRIORITY_COLORS, formatDate } from "@/lib/utils";
@@ -14,6 +14,13 @@ const supabase = createClient();
 type ExtTodo = Todo & { kind?: string; vertical?: Vertical };
 
 interface Props { userId: string; verticals: Vertical[]; }
+
+interface ReachOut {
+  id: string; user_id: string; name: string;
+  phone?: string; email?: string; city?: string; company?: string;
+  created_at: string;
+}
+const EMPTY_RO = { id: "", name: "", phone: "", email: "", city: "", company: "" };
 
 const EMPTY_FORM = {
   title: "", kind: "todo" as "todo" | "follow_up", description: "",
@@ -26,6 +33,13 @@ export default function PersonalTodosClient({ userId, verticals }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
+
+  // Reach Outs
+  const [view, setView] = useState<"todos" | "reachouts">("todos");
+  const [reachOuts, setReachOuts] = useState<ReachOut[]>([]);
+  const [roForm, setRoForm] = useState({ ...EMPTY_RO });
+  const [showRoForm, setShowRoForm] = useState(false);
+  const [roSaving, setRoSaving] = useState(false);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -47,6 +61,50 @@ export default function PersonalTodosClient({ userId, verticals }: Props) {
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    supabase.from("reach_outs").select("*").eq("user_id", userId).order("created_at", { ascending: false })
+      .then(({ data }) => setReachOuts((data || []) as ReachOut[]));
+  }, [userId]);
+
+  async function saveReachOut() {
+    if (!roForm.name.trim()) return;
+    setRoSaving(true);
+    const payload = {
+      user_id: userId,
+      name: roForm.name.trim(),
+      phone: roForm.phone || null,
+      email: roForm.email || null,
+      city: roForm.city || null,
+      company: roForm.company || null,
+      updated_at: new Date().toISOString(),
+    };
+    if (roForm.id) {
+      const { data, error } = await supabase.from("reach_outs").update(payload).eq("id", roForm.id).select().single();
+      setRoSaving(false);
+      if (error) { alert(`Failed to save: ${error.message}`); return; }
+      if (data) setReachOuts(prev => prev.map(r => r.id === roForm.id ? data as ReachOut : r));
+    } else {
+      const { data, error } = await supabase.from("reach_outs").insert(payload).select().single();
+      setRoSaving(false);
+      if (error) { alert(`Failed to save: ${error.message}`); return; }
+      if (data) setReachOuts(prev => [data as ReachOut, ...prev]);
+    }
+    setShowRoForm(false);
+    setRoForm({ ...EMPTY_RO });
+  }
+
+  async function deleteReachOut(id: string) {
+    if (!confirm("Delete this reach out?")) return;
+    await supabase.from("reach_outs").delete().eq("id", id);
+    setReachOuts(prev => prev.filter(r => r.id !== id));
+  }
+
+  const filteredReachOuts = reachOuts.filter(r => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return [r.name, r.phone, r.email, r.city, r.company].some(v => (v || "").toLowerCase().includes(q));
+  });
 
   async function add() {
     if (!form.title.trim()) return;
@@ -114,9 +172,21 @@ export default function PersonalTodosClient({ userId, verticals }: Props) {
               </p>
             </div>
           </div>
-          <button onClick={() => setShowForm(true)}
+          <button onClick={() => view === "todos" ? setShowForm(true) : (setRoForm({ ...EMPTY_RO }), setShowRoForm(true))}
             className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl text-sm font-medium hover:bg-teal-700 shadow-sm">
-            <Plus className="w-4 h-4" /> New
+            <Plus className="w-4 h-4" /> {view === "todos" ? "New" : "Add Reach Out"}
+          </button>
+        </div>
+
+        {/* View tabs */}
+        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit mb-4">
+          <button onClick={() => setView("todos")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${view === "todos" ? "bg-white shadow text-teal-700" : "text-slate-500 hover:text-slate-700"}`}>
+            <ListTodo className="w-3.5 h-3.5" /> To-Dos & Follow-ups
+          </button>
+          <button onClick={() => setView("reachouts")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${view === "reachouts" ? "bg-white shadow text-teal-700" : "text-slate-500 hover:text-slate-700"}`}>
+            <UserPlus className="w-3.5 h-3.5" /> Reach Outs ({reachOuts.length})
           </button>
         </div>
 
@@ -127,15 +197,15 @@ export default function PersonalTodosClient({ userId, verticals }: Props) {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
               className="pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-teal-400 w-44" />
           </div>
-          <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
+          {view === "todos" && <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
             {(["pending", "all", "done"] as const).map(s => (
               <button key={s} onClick={() => setFilterStatus(s)}
                 className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-all ${filterStatus === s ? "bg-white shadow text-teal-700" : "text-slate-500 hover:text-slate-700"}`}>
                 {s}
               </button>
             ))}
-          </div>
-          <select value={filterKind} onChange={e => setFilterKind(e.target.value as typeof filterKind)}
+          </div>}
+          {view === "todos" && <><select value={filterKind} onChange={e => setFilterKind(e.target.value as typeof filterKind)}
             className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600">
             <option value="">To-dos & Follow-ups</option>
             <option value="todo">To-dos only</option>
@@ -152,12 +222,84 @@ export default function PersonalTodosClient({ userId, verticals }: Props) {
             <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
-          </select>
+          </select></>}
         </div>
       </div>
 
+      {/* Reach Outs table */}
+      {view === "reachouts" && (
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+          {filteredReachOuts.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400">
+              <UserPlus className="w-12 h-12 mx-auto mb-3 opacity-20" />
+              <p className="text-sm font-medium">No reach outs yet</p>
+              <p className="text-xs mt-1">Save people you plan to reach out to — name, number, email, city, company.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[720px]">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Name</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Number</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Email</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">City</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Company</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Added</th>
+                      <th className="w-20" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {filteredReachOuts.map(r => (
+                      <tr key={r.id} className="hover:bg-slate-50/50 group">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-xs shrink-0">
+                              {r.name.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="font-medium text-slate-900">{r.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {r.phone ? <a href={`tel:${r.phone}`} className="flex items-center gap-1.5 hover:text-teal-600"><PhoneCall className="w-3 h-3 text-slate-400" />{r.phone}</a> : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {r.email ? <a href={`mailto:${r.email}`} className="flex items-center gap-1.5 hover:text-teal-600"><Mail className="w-3 h-3 text-slate-400" />{r.email}</a> : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {r.city ? <span className="flex items-center gap-1.5"><MapPin className="w-3 h-3 text-slate-400" />{r.city}</span> : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {r.company ? <span className="flex items-center gap-1.5"><Building2 className="w-3 h-3 text-slate-400" />{r.company}</span> : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-400">
+                          {new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1 justify-end">
+                            <button onClick={() => { setRoForm({ id: r.id, name: r.name, phone: r.phone || "", email: r.email || "", city: r.city || "", company: r.company || "" }); setShowRoForm(true); }}
+                              className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg" title="Edit">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => deleteReachOut(r.id)}
+                              className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg" title="Delete">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* List */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-2">
+      {view === "todos" && <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-2">
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-teal-400" /></div>
         ) : filtered.length === 0 ? (
@@ -176,7 +318,46 @@ export default function PersonalTodosClient({ userId, verticals }: Props) {
             )}
           </>
         )}
-      </div>
+      </div>}
+
+      {/* Reach Out add/edit modal */}
+      {showRoForm && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-900">{roForm.id ? "Edit Reach Out" : "Add Reach Out"}</h3>
+              <button onClick={() => setShowRoForm(false)}><X className="w-4 h-4 text-slate-400" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <input autoFocus value={roForm.name} onChange={e => setRoForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Name *"
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+              <div className="grid grid-cols-2 gap-2">
+                <input value={roForm.phone} onChange={e => setRoForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="Phone number" type="tel"
+                  className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                <input value={roForm.email} onChange={e => setRoForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="Email ID" type="email"
+                  className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                <input value={roForm.city} onChange={e => setRoForm(f => ({ ...f, city: e.target.value }))}
+                  placeholder="City"
+                  className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                <input value={roForm.company} onChange={e => setRoForm(f => ({ ...f, company: e.target.value }))}
+                  placeholder="Company name"
+                  className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+              </div>
+            </div>
+            <div className="flex gap-3 px-5 py-4 border-t border-slate-100">
+              <button onClick={() => setShowRoForm(false)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={saveReachOut} disabled={roSaving || !roForm.name.trim()}
+                className="flex-1 py-2.5 text-sm bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                {roSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {roSaving ? "Saving…" : roForm.id ? "Save Changes" : "Add Reach Out"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Modal */}
       {showForm && (

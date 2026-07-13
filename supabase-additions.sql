@@ -193,3 +193,20 @@ alter table leads add column if not exists next_follow_up date;
 
 -- ─── Personal to-dos: kind (todo | follow_up) ────────────────────────────────
 alter table todos add column if not exists kind text default 'todo';
+
+-- ─── Reach Outs (personal contact list in To-Dos panel) ──────────────────────
+create table if not exists reach_outs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  name text not null,
+  phone text,
+  email text,
+  city text,
+  company text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table reach_outs enable row level security;
+drop policy if exists "reach_outs_own" on reach_outs;
+create policy "reach_outs_own" on reach_outs
+  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
