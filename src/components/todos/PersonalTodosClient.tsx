@@ -40,6 +40,7 @@ export default function PersonalTodosClient({ userId, verticals }: Props) {
   const [roForm, setRoForm] = useState({ ...EMPTY_RO });
   const [showRoForm, setShowRoForm] = useState(false);
   const [roSaving, setRoSaving] = useState(false);
+  const [roCityFilter, setRoCityFilter] = useState("");
 
   // Filters
   const [search, setSearch] = useState("");
@@ -100,7 +101,11 @@ export default function PersonalTodosClient({ userId, verticals }: Props) {
     setReachOuts(prev => prev.filter(r => r.id !== id));
   }
 
+  const roCities = Array.from(new Set(reachOuts.map(r => (r.city || "").trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b));
+
   const filteredReachOuts = reachOuts.filter(r => {
+    if (roCityFilter && (r.city || "").trim().toLowerCase() !== roCityFilter.toLowerCase()) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return [r.name, r.phone, r.email, r.city, r.company].some(v => (v || "").toLowerCase().includes(q));
@@ -197,6 +202,13 @@ export default function PersonalTodosClient({ userId, verticals }: Props) {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
               className="pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-teal-400 w-44" />
           </div>
+          {view === "reachouts" && roCities.length > 0 && (
+            <select value={roCityFilter} onChange={e => setRoCityFilter(e.target.value)}
+              className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600">
+              <option value="">All Cities</option>
+              {roCities.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
           {view === "todos" && <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
             {(["pending", "all", "done"] as const).map(s => (
               <button key={s} onClick={() => setFilterStatus(s)}
