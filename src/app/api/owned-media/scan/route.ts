@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase-server";
 import type { OwnedMediaProperty, OwnedMediaPlatform } from "@/lib/types";
 
 export const maxDuration = 120;
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
@@ -20,7 +23,7 @@ function parseCount(raw: string): number | null {
 async function fetchText(url: string): Promise<string | null> {
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 10000);
+    const t = setTimeout(() => ctrl.abort(), 12000);
     const res = await fetch(url, {
       headers: { "User-Agent": UA, "Accept-Language": "en-US,en;q=0.9" },
       signal: ctrl.signal,
@@ -32,8 +35,45 @@ async function fetchText(url: string): Promise<string | null> {
   } catch { return null; }
 }
 
-async function scanReddit(link: string): Promise<number | null> {
-  // r/<sub> → about.json has exact subscriber count
+// Compact page representation for AI extraction: meta tags + title + visible text
+function pageExcerpt(html: string): string {
+  const metas = (html.match(/<meta[^>]+content="[^"]{3,300}"[^>]*>/gi) || []).slice(0, 40).join("\n");
+  const title = (html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || "";
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 6000);
+  return `TITLE: ${title}\nMETA TAGS:\n${metas}\nPAGE TEXT:\n${text}`.slice(0, 12000);
+}
+
+// ── Fast regex extractors (return count; html kept for AI fallback) ────────
+function regexExtract(platform: OwnedMediaPlatform, html: string): number | null {
+  let m: RegExpMatchArray | null;
+  switch (platform) {
+    case "youtube":
+      m = html.match(/"subscriberCount"\s*:\s*"(\d+)"/);
+      if (m) return parseInt(m[1]);
+      m = html.match(/([\d.,]+[KMB]?)\s*subscribers/i);
+      return m ? parseCount(m[1]) : null;
+    case "instagram":
+      m = html.match(/content="([\d.,]+[KMB]?)\s*Followers/i);
+      if (m) return parseCount(m[1]);
+      m = html.match(/"edge_followed_by"\s*:\s*\{\s*"count"\s*:\s*(\d+)/);
+      return m ? parseInt(m[1]) : null;
+    case "linkedin":
+      m = html.match(/([\d.,]+[KMB]?)\s*followers/i);
+      return m ? parseCount(m[1]) : null;
+    case "substack":
+      m = html.match(/([\d.,]+[KMB]?\+?)\s*subscribers/i);
+      return m ? parseCount(m[1].replace("+", "")) : null;
+    default:
+      return null;
+  }
+}
+
+async function scanRedditExact(link: string): Promise<number | null> {
   const m = link.match(/reddit\.com\/(r\/[^/?#]+)/i);
   if (!m) return null;
   try {
@@ -49,55 +89,39 @@ async function scanReddit(link: string): Promise<number | null> {
   } catch { return null; }
 }
 
-async function scanYouTube(link: string): Promise<number | null> {
-  const html = await fetchText(link);
-  if (!html) return null;
-  // Exact count in embedded JSON
-  let m = html.match(/"subscriberCount"\s*:\s*"(\d+)"/);
-  if (m) return parseInt(m[1]);
-  // "1.23M subscribers" in subscriberCountText
-  m = html.match(/([\d.,]+[KMB]?)\s*subscribers/i);
-  if (m) return parseCount(m[1]);
-  return null;
-}
+// ── AI fallback: extract counts from fetched pages Claude-side ─────────────
+async function aiExtract(pages: Array<{ platform: string; url: string; excerpt: string }>): Promise<Record<string, number>> {
+  if (pages.length === 0) return {};
+  try {
+    const prompt = `You are extracting audience-size metrics from social media page content.
 
-async function scanInstagram(link: string): Promise<number | null> {
-  const html = await fetchText(link);
-  if (!html) return null;
-  // og:description: "12.5K Followers, 1,234 Following, 567 Posts"
-  const m = html.match(/content="([\d.,]+[KMB]?)\s*Followers/i);
-  if (m) return parseCount(m[1]);
-  const m2 = html.match(/"edge_followed_by"\s*:\s*\{\s*"count"\s*:\s*(\d+)/);
-  if (m2) return parseInt(m2[1]);
-  return null;
-}
+For each page below, find the follower / subscriber / member count of the profile the URL points to. Convert abbreviations (12.5K → 12500, 1.2M → 1200000). If the page content clearly does not contain the count (login wall, error page), return null for it.
 
-async function scanLinkedIn(link: string): Promise<number | null> {
-  const html = await fetchText(link);
-  if (!html) return null;
-  const m = html.match(/([\d.,]+[KMB]?)\s*followers/i);
-  if (m) return parseCount(m[1]);
-  return null;
-}
+Return ONLY a JSON object mapping platform to number or null, e.g. {"instagram": 45200, "linkedin": null}
 
-async function scanSubstack(link: string): Promise<number | null> {
-  const base = link.replace(/\/+$/, "");
-  for (const url of [base + "/about", base]) {
-    const html = await fetchText(url);
-    if (!html) continue;
-    const m = html.match(/([\d.,]+[KMB]?\+?)\s*subscribers/i);
-    if (m) return parseCount(m[1].replace("+", ""));
+${pages.map(p => `=== PLATFORM: ${p.platform} | URL: ${p.url} ===\n${p.excerpt}`).join("\n\n")}`;
+
+    const msg = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 300,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const raw = (msg.content[0] as { type: string; text: string }).text;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, number | null>;
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === "number" && v > 0) out[k] = Math.round(v);
+    }
+    return out;
+  } catch (e) {
+    console.error("ai extract failed:", e);
+    return {};
   }
-  return null;
 }
 
-const SCANNERS: Partial<Record<OwnedMediaPlatform, (link: string) => Promise<number | null>>> = {
-  reddit: scanReddit,
-  youtube: scanYouTube,
-  instagram: scanInstagram,
-  linkedin: scanLinkedIn,
-  substack: scanSubstack,
-};
+const SCANNABLE: OwnedMediaPlatform[] = ["instagram", "linkedin", "youtube", "reddit", "substack"];
 
 // POST /api/owned-media/scan — { id?: string } (single property, or all if omitted)
 export async function POST(req: NextRequest) {
@@ -119,15 +143,49 @@ export async function POST(req: NextRequest) {
     const links = prop.links || {};
     const updated: Record<string, number> = { ...(prop.metrics || {}) };
     const propResult: Record<string, number | null> = {};
+    const aiQueue: Array<{ platform: string; url: string; excerpt: string }> = [];
 
-    const scans = (Object.keys(SCANNERS) as OwnedMediaPlatform[])
-      .filter(p => links[p])
-      .map(async p => {
-        const count = await SCANNERS[p]!(links[p]!);
-        propResult[p] = count;
-        if (count !== null && count > 0) updated[p] = count;
-      });
-    await Promise.all(scans);
+    await Promise.all(SCANNABLE.filter(p => links[p]).map(async platform => {
+      const url = links[platform]!;
+
+      // Reddit: exact count via public JSON API
+      if (platform === "reddit") {
+        const count = await scanRedditExact(url);
+        propResult[platform] = count;
+        if (count) { updated[platform] = count; return; }
+      }
+
+      // Fetch the page once; regex first, AI fallback second
+      const candidates = platform === "substack"
+        ? [url.replace(/\/+$/, "") + "/about", url]
+        : [url];
+      for (const candidate of candidates) {
+        const html = await fetchText(candidate);
+        if (!html) continue;
+        const count = regexExtract(platform, html);
+        if (count && count > 0) {
+          propResult[platform] = count;
+          updated[platform] = count;
+          return;
+        }
+        // Regex failed — queue the page content for AI extraction
+        aiQueue.push({ platform, url: candidate, excerpt: pageExcerpt(html) });
+        return;
+      }
+      propResult[platform] = propResult[platform] ?? null;
+    }));
+
+    // AI pass for everything the regexes couldn't read
+    if (aiQueue.length > 0) {
+      const aiCounts = await aiExtract(aiQueue);
+      for (const [platform, count] of Object.entries(aiCounts)) {
+        propResult[platform] = count;
+        updated[platform] = count;
+      }
+      for (const q of aiQueue) {
+        if (!(q.platform in aiCounts)) propResult[q.platform] = propResult[q.platform] ?? null;
+      }
+    }
 
     await svc.from("owned_media_properties").update({
       metrics: updated,
