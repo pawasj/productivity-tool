@@ -210,3 +210,6 @@ alter table reach_outs enable row level security;
 drop policy if exists "reach_outs_own" on reach_outs;
 create policy "reach_outs_own" on reach_outs
   for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ─── Lead ownership (member-scoped pipeline visibility) ──────────────────────
+alter table leads add column if not exists created_by uuid references profiles(id) on delete set null;

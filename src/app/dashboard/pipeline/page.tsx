@@ -8,14 +8,22 @@ export default async function PipelinePage() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  await requireAccess("sales_pipeline");
+  const profile = await requireAccess("sales_pipeline");
+  const isAdmin = profile.role === "admin";
 
-  const [{ data: leads }, { data: members }, { data: verticals }, { data: profile }, { data: briefs }] = await Promise.all([
-    supabase.from("leads").select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)").order("updated_at", { ascending: false }),
+  // Members see only leads/briefs they added (or are POC on); admins see all
+  let leadsQuery = supabase.from("leads").select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)").order("updated_at", { ascending: false });
+  let briefsQuery = supabase.from("client_briefs").select("*, creator:profiles!client_briefs_created_by_fkey(full_name)").order("created_at", { ascending: false });
+  if (!isAdmin) {
+    leadsQuery = leadsQuery.or(`created_by.eq.${user.id},our_poc_id.eq.${user.id}`);
+    briefsQuery = briefsQuery.eq("created_by", user.id);
+  }
+
+  const [{ data: leads }, { data: members }, { data: verticals }, { data: briefs }] = await Promise.all([
+    leadsQuery,
     supabase.from("profiles").select("*").order("full_name"),
     supabase.from("verticals").select("*").order("order_index"),
-    supabase.from("profiles").select("*").eq("id", user.id).single(),
-    supabase.from("client_briefs").select("*, creator:profiles!client_briefs_created_by_fkey(full_name)").order("created_at", { ascending: false }),
+    briefsQuery,
   ]);
 
   return (

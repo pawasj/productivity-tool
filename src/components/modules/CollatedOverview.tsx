@@ -19,8 +19,8 @@ interface Props {
   focusVerticalId?: string;   // when set, show only this vertical (expanded)
 }
 
-interface LeadLite { id: string; company_name: string; status: string; deal_value?: number; monthly_value?: number; engagement_type?: string; vertical_id?: string; }
-interface BriefLite { id: string; brand_name: string; status?: string; total_budget?: number; budget?: number; vertical_id?: string; }
+interface LeadLite { id: string; company_name: string; status: string; deal_value?: number; monthly_value?: number; engagement_type?: string; vertical_id?: string; created_by?: string; our_poc_id?: string; }
+interface BriefLite { id: string; brand_name: string; status?: string; total_budget?: number; budget?: number; vertical_id?: string; created_by?: string; }
 type TodoLite = Todo & { kind?: string; assigned_to?: string[] | null };
 
 function fmtL(n: number) {
@@ -49,13 +49,17 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
   const load = useCallback(async () => {
     setLoading(true);
     const [l, b, t, i] = await Promise.all([
-      supabase.from("leads").select("id, company_name, status, deal_value, monthly_value, engagement_type, vertical_id"),
-      supabase.from("client_briefs").select("id, brand_name, status, total_budget, budget, vertical_id"),
+      supabase.from("leads").select("id, company_name, status, deal_value, monthly_value, engagement_type, vertical_id, created_by, our_poc_id"),
+      supabase.from("client_briefs").select("id, brand_name, status, total_budget, budget, vertical_id, created_by"),
       supabase.from("todos").select("*").eq("completed", false).order("created_at", { ascending: false }),
       supabase.from("ideas").select("*, profiles(full_name)").order("created_at", { ascending: false }).limit(200),
     ]);
-    setLeads((l.data || []) as LeadLite[]);
-    setBriefs((b.data || []) as BriefLite[]);
+    // Members see only their own leads/briefs on the dashboard; admins see all
+    const admin = profile?.role === "admin";
+    const allLeads = (l.data || []) as LeadLite[];
+    const allBriefs = (b.data || []) as BriefLite[];
+    setLeads(admin ? allLeads : allLeads.filter(x => x.created_by === userId || x.our_poc_id === userId));
+    setBriefs(admin ? allBriefs : allBriefs.filter(x => x.created_by === userId));
     setTodos((t.data || []) as TodoLite[]);
     setIdeas((i.data || []) as Idea[]);
     setLoading(false);
@@ -72,7 +76,7 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
       .order("start_time")
       .limit(5)
       .then(({ data }) => setMeetings((data || []) as typeof meetings));
-  }, [userId]);
+  }, [userId, profile]);
 
   useEffect(() => { load(); }, [load]);
 

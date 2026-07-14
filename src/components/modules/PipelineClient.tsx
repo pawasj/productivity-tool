@@ -364,6 +364,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
   const [form, setForm] = useState<FormState>(EMPTY_LEAD);
   const [saving, setSaving] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const isAdmin = profile?.role === "admin";
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterVertical, setFilterVertical] = useState<string>("");
@@ -527,7 +528,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
         .select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)").single();
       if (data) setLeads(leads.map(l => l.id === editingLead.id ? data as Lead : l));
     } else {
-      const { data } = await supabase.from("leads").insert(payload)
+      const { data } = await supabase.from("leads").insert({ ...payload, created_by: userId })
         .select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)").single();
       if (data) setLeads([data as Lead, ...leads]);
     }
@@ -611,15 +612,15 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900">Sales Pipeline</h1>
-              <p className="text-xs text-slate-400">All leads, briefs & revenue in one view</p>
+              <p className="text-xs text-slate-400">{isAdmin ? "All leads, briefs & revenue in one view" : "Your leads — add new leads and track their status"}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            {isAdmin && <button
               onClick={() => setShowAnalytics(true)}
               className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
               <BarChart2 className="w-4 h-4 text-indigo-500" /> Analytics
-            </button>
+            </button>}
             <button onClick={openAdd}
               className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200">
               <Plus className="w-4 h-4" /> Add Lead
@@ -627,8 +628,8 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {/* Stats — full pipeline & amounts are admin-only */}
+        {isAdmin && <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
             <p className="text-xs font-medium text-slate-500 mb-1">Active Pipeline</p>
             <p className="text-xl font-bold text-slate-800">{fmtL(stats.activePipeline)}</p>
@@ -654,7 +655,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
             <p className="text-xl font-bold text-amber-800">{stats.winRate || 0}%</p>
             <p className="text-xs text-amber-400 mt-0.5">Of qualified leads</p>
           </div>
-        </div>
+        </div>}
 
         {/* Mini Funnel Strip */}
         <div className="mt-4 flex items-center gap-1 overflow-x-auto pb-1">
@@ -1010,7 +1011,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
       </div>
 
       {/* Analytics Panel */}
-      {showAnalytics && (
+      {isAdmin && showAnalytics && (
         <AnalyticsPanel
           data={{ leads, briefs, verticals, members }}
           onClose={() => setShowAnalytics(false)}
