@@ -67,15 +67,14 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
     // Secondary widgets — leave approvals (managers/admins) + upcoming meetings
     fetch("/api/dashboard/pending-leaves").then(r => r.json())
       .then(j => setPendingLeaves(j.data || [])).catch(() => {});
-    const weekAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    supabase.from("calendar_events")
-      .select("id, summary, start_time")
-      .eq("user_id", userId)
-      .gte("start_time", new Date().toISOString())
-      .lte("start_time", weekAhead)
-      .order("start_time")
-      .limit(5)
-      .then(({ data }) => setMeetings((data || []) as typeof meetings));
+    // /api/calendar/events syncs from Google (with token refresh) and returns events
+    fetch("/api/calendar/events").then(r => r.json()).then(j => {
+      const weekAhead = Date.now() + 7 * 24 * 60 * 60 * 1000;
+      const evts = ((j.events || []) as Array<{ id: string; summary?: string; start_time: string }>)
+        .filter(e => e.start_time && new Date(e.start_time).getTime() <= weekAhead)
+        .slice(0, 5);
+      setMeetings(evts);
+    }).catch(() => {});
   }, [userId, profile]);
 
   useEffect(() => { load(); }, [load]);

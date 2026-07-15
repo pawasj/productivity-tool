@@ -12,7 +12,7 @@ export async function POST() {
   const today = new Date().toISOString().slice(0, 10);
   const svc = createServiceRoleClient();
 
-  const [{ data: leads }, { data: briefs }] = await Promise.all([
+  const [{ data: leads }, { data: briefs }, { data: dueTodos }] = await Promise.all([
     svc.from("leads")
       .select("id, company_name, next_follow_up, our_poc_id, status")
       .not("next_follow_up", "is", null)
@@ -23,6 +23,11 @@ export async function POST() {
       .not("next_follow_up", "is", null)
       .lte("next_follow_up", today)
       .not("status", "in", "(completed,lost)"),
+    svc.from("todos")
+      .select("id, title, due_date, user_id, assigned_to, kind")
+      .eq("completed", false)
+      .not("due_date", "is", null)
+      .lte("due_date", today),
   ]);
 
   const candidates: Array<{ user_id: string; ref: string; name: string; due: string }> = [];
@@ -31,6 +36,13 @@ export async function POST() {
   }
   for (const b of (briefs || []) as Record<string, string>[]) {
     if (b.created_by) candidates.push({ user_id: b.created_by, ref: `brief:${b.id}:${b.next_follow_up}`, name: b.brand_name, due: b.next_follow_up });
+  }
+  // Due to-dos and tasks — remind the owner and every assignee
+  for (const t of (dueTodos || []) as Array<{ id: string; title: string; due_date: string; user_id: string; assigned_to?: string[] | null; kind?: string }>) {
+    const recipients = new Set<string>([t.user_id, ...(t.assigned_to || [])]);
+    for (const uid of recipients) {
+      if (uid) candidates.push({ user_id: uid, ref: `todo:${t.id}:${t.due_date}`, name: t.title, due: t.due_date });
+    }
   }
   if (candidates.length === 0) return NextResponse.json({ created: 0 });
 
@@ -41,7 +53,7 @@ export async function POST() {
     .eq("type", "follow_up")
     .in("user_id", Array.from(new Set(candidates.map(c => c.user_id))));
   const sent = new Set((existing || []).map(n => {
-    const m = String((n as { message: string }).message).match(/\[(lead|brief):[^\]]+\]$/);
+    const m = String((n as { message: string }).message).match(/\[(lead|brief|todo):[^\]]+\]$/);
     return m ? m[0] : "";
   }));
 

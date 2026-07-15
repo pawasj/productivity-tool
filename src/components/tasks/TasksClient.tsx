@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase";
 import {
   ListTodo, Plus, X, Check, Circle, ChevronDown, Filter,
-  Loader2, Trash2, Calendar, Flag, Users, Bell,
+  Loader2, Trash2, Calendar, Flag, Users, Bell, Pencil,
 } from "lucide-react";
 import type { Todo, Vertical, Profile } from "@/lib/types";
 import { PRIORITY_COLORS, formatDate } from "@/lib/utils";
@@ -15,13 +15,14 @@ interface Props { userId: string; verticals: Vertical[]; members: Profile[]; }
 
 type ExtTodo = Todo & { assigned_to?: string[]; vertical?: Vertical; creator?: Profile };
 
-const EMPTY_FORM = { title: "", description: "", priority: "medium" as const, due_date: "", vertical_id: "", assigned_to: [] as string[] };
+const EMPTY_FORM = { title: "", description: "", priority: "medium" as "low" | "medium" | "high", due_date: "", vertical_id: "", assigned_to: [] as string[] };
 
 export default function TasksClient({ userId, verticals, members: initialMembers }: Props) {
   const [tasks, setTasks] = useState<ExtTodo[]>([]);
   const [members, setMembers] = useState<Profile[]>(initialMembers);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingTask, setEditingTask] = useState<ExtTodo | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "done">("all");
@@ -53,33 +54,67 @@ export default function TasksClient({ userId, verticals, members: initialMembers
     return true;
   });
 
+  function openEdit(t: ExtTodo) {
+    setEditingTask(t);
+    setForm({
+      title: t.title,
+      description: t.description || "",
+      priority: t.priority,
+      due_date: t.due_date ? t.due_date.slice(0, 10) : "",
+      vertical_id: t.vertical_id || "",
+      assigned_to: t.assigned_to || [],
+    });
+    setShowForm(true);
+  }
+
   async function addTask() {
     if (!form.title.trim()) return;
     setSaving(true);
-    const { data } = await supabase.from("todos").insert({
+    const payload = {
       title: form.title.trim(),
       description: form.description || null,
       priority: form.priority,
       due_date: form.due_date || null,
       vertical_id: form.vertical_id || (verticals[0]?.id ?? null),
-      user_id: userId,
-      completed: false,
       // Tasks are always assigned — default to self so they stay in this panel
       assigned_to: form.assigned_to.length ? form.assigned_to : [userId],
-    }).select("*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name)").single();
-    if (data) {
-      setTasks(prev => [data as ExtTodo, ...prev]);
-      // Notify assigned members via in-app notification
-      if (form.assigned_to.length) {
-        await fetch("/api/tasks/notify", {
+    };
+    const sel = "*, vertical:verticals(id,name,color,icon), creator:profiles!todos_user_id_fkey(id,full_name)";
+    if (editingTask) {
+      const prevAssigned = editingTask.assigned_to || [];
+      const { data, error } = await supabase.from("todos").update(payload).eq("id", editingTask.id).select(sel).single();
+      setSaving(false);
+      if (error) { alert(`Failed to save: ${error.message}`); return; }
+      if (data) setTasks(prev => prev.map(x => x.id === editingTask.id ? data as ExtTodo : x));
+      // Notify newly added assignees
+      const added = payload.assigned_to.filter(id => !prevAssigned.includes(id));
+      if (added.length) {
+        fetch("/api/tasks/notify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ task_title: form.title.trim(), assignee_ids: form.assigned_to, assigner_id: userId }),
-        });
+          body: JSON.stringify({ task_title: payload.title, assignee_ids: added, assigner_id: userId }),
+        }).catch(() => {});
       }
+    } else {
+      const { data } = await supabase.from("todos").insert({
+        ...payload,
+        user_id: userId,
+        completed: false,
+      }).select(sel).single();
+      if (data) {
+        setTasks(prev => [data as ExtTodo, ...prev]);
+        if (form.assigned_to.length) {
+          await fetch("/api/tasks/notify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task_title: payload.title, assignee_ids: form.assigned_to, assigner_id: userId }),
+          });
+        }
+      }
+      setSaving(false);
     }
-    setSaving(false);
     setShowForm(false);
+    setEditingTask(null);
     setForm({ ...EMPTY_FORM });
   }
 
@@ -160,11 +195,11 @@ export default function TasksClient({ userId, verticals, members: initialMembers
           </div>
         ) : (
           <>
-            {pending.map(t => <TaskRow key={t.id} task={t} userId={userId} members={members} onToggle={toggleTask} onDelete={deleteTask} />)}
+            {pending.map(t => <TaskRow key={t.id} task={t} userId={userId} members={members} onToggle={toggleTask} onDelete={deleteTask} onEdit={openEdit} />)}
             {done.length > 0 && (
               <>
                 <div className="pt-2 pb-1"><p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Completed ({done.length})</p></div>
-                {done.map(t => <TaskRow key={t.id} task={t} userId={userId} members={members} onToggle={toggleTask} onDelete={deleteTask} />)}
+                {done.map(t => <TaskRow key={t.id} task={t} userId={userId} members={members} onToggle={toggleTask} onDelete={deleteTask} onEdit={openEdit} />)}
               </>
             )}
           </>
@@ -176,8 +211,8 @@ export default function TasksClient({ userId, verticals, members: initialMembers
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h3 className="font-semibold text-slate-900">New Task</h3>
-              <button onClick={() => setShowForm(false)}><X className="w-4 h-4 text-slate-400" /></button>
+              <h3 className="font-semibold text-slate-900">{editingTask ? "Edit Task" : "New Task"}</h3>
+              <button onClick={() => { setShowForm(false); setEditingTask(null); }}><X className="w-4 h-4 text-slate-400" /></button>
             </div>
             <div className="p-5 space-y-3">
               <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
@@ -253,11 +288,11 @@ export default function TasksClient({ userId, verticals, members: initialMembers
               </div>
             </div>
             <div className="flex gap-3 px-5 py-4 border-t border-slate-100">
-              <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={() => { setShowForm(false); setEditingTask(null); }} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
               <button onClick={addTask} disabled={saving || !form.title.trim()}
                 className="flex-1 py-2.5 text-sm bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
-                {saving ? "Creating…" : "Create & Notify"}
+                {saving ? "Saving…" : editingTask ? "Save Changes" : "Create & Notify"}
               </button>
             </div>
           </div>
@@ -267,9 +302,9 @@ export default function TasksClient({ userId, verticals, members: initialMembers
   );
 }
 
-function TaskRow({ task, userId, members, onToggle, onDelete }: {
+function TaskRow({ task, userId, members, onToggle, onDelete, onEdit }: {
   task: ExtTodo; userId: string; members: Profile[];
-  onToggle: (t: ExtTodo) => void; onDelete: (id: string) => void;
+  onToggle: (t: ExtTodo) => void; onDelete: (id: string) => void; onEdit: (t: ExtTodo) => void;
 }) {
   const assignedMembers = members.filter(m => (task.assigned_to || []).includes(m.id));
   const isOverdue = !task.completed && task.due_date && new Date(task.due_date) < new Date();
@@ -318,9 +353,14 @@ function TaskRow({ task, userId, members, onToggle, onDelete }: {
         </div>
       </div>
       {task.user_id === userId && (
-        <button onClick={() => onDelete(task.id)} className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-all text-slate-300" title="Delete task">
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+          <button onClick={() => onEdit(task)} className="p-1.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-slate-300" title="Edit task">
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => onDelete(task.id)} className="p-1.5 hover:bg-rose-50 hover:text-rose-500 rounded-lg text-slate-300" title="Delete task">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );

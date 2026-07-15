@@ -502,6 +502,20 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
     setShowForm(true);
   }
 
+  async function notifyPoc(pocId: string | null, companyName: string, prevPocId?: string | null) {
+    if (!pocId || pocId === userId || pocId === prevPocId) return;
+    fetch("/api/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_ids: [pocId],
+        type: "poc_assigned",
+        title: "You're the POC on a lead",
+        message: `You've been set as POC for "${companyName}" in the Sales Pipeline`,
+      }),
+    }).catch(() => {});
+  }
+
   async function saveLead() {
     if (!form.company_name.trim() || !form.contact_name.trim()) return;
     setSaving(true);
@@ -527,7 +541,9 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
       const { data } = await supabase.from("leads").update(payload).eq("id", editingLead.id)
         .select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)").single();
       if (data) setLeads(leads.map(l => l.id === editingLead.id ? data as Lead : l));
+      notifyPoc(payload.our_poc_id, payload.company_name, editingLead.our_poc_id);
     } else {
+      notifyPoc(payload.our_poc_id, payload.company_name);
       const { data } = await supabase.from("leads").insert({ ...payload, created_by: userId })
         .select("*, our_poc:profiles!leads_our_poc_id_fkey(full_name, email), vertical:verticals(name, color)").single();
       if (data) setLeads([data as Lead, ...leads]);
