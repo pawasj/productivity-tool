@@ -44,7 +44,7 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
   const [todos, setTodos] = useState<TodoLite[]>([]);
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [pendingLeaves, setPendingLeaves] = useState<Array<{ id: string; leave_type: string; from_date: string; to_date: string; days: number; profiles?: { full_name?: string } }>>([]);
-  const [meetings, setMeetings] = useState<Array<{ id: string; summary?: string; start_time: string }>>([]);
+  const [meetings, setMeetings] = useState<Array<{ id: string; summary?: string; start_time: string; meet_link?: string }>>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,7 +70,7 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
     // /api/calendar/events syncs from Google (with token refresh) and returns events
     fetch("/api/calendar/events").then(r => r.json()).then(j => {
       const weekAhead = Date.now() + 7 * 24 * 60 * 60 * 1000;
-      const evts = ((j.events || []) as Array<{ id: string; summary?: string; start_time: string }>)
+      const evts = ((j.events || []) as Array<{ id: string; summary?: string; start_time: string; meet_link?: string }>)
         .filter(e => e.start_time && new Date(e.start_time).getTime() <= weekAhead)
         .slice(0, 5);
       setMeetings(evts);
@@ -134,24 +134,39 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
             </button>
           )}
           {meetings.length > 0 && (
-            <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer"
-              className="bg-sky-50 border border-sky-200 rounded-2xl p-4 hover:shadow-md transition-shadow block">
+            <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <CalendarClock className="w-4 h-4 text-sky-600" />
                 <p className="text-sm font-bold text-sky-800">Upcoming Meetings</p>
-                <ExternalLink className="w-3 h-3 text-sky-400 ml-auto" />
+                <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer"
+                  className="ml-auto text-sky-400 hover:text-sky-600" title="Open Google Calendar">
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               </div>
-              <div className="space-y-1">
-                {meetings.slice(0, 3).map(m => (
-                  <p key={m.id} className="text-xs text-sky-800">
-                    <span className="font-semibold">
-                      {new Date(m.start_time).toLocaleString("en-IN", { weekday: "short", hour: "numeric", minute: "2-digit" })}
-                    </span>
-                    {" — "}{m.summary || "Untitled meeting"}
-                  </p>
+              <div className="space-y-1.5">
+                {meetings.slice(0, 4).map(m => (
+                  <div key={m.id} className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-sky-900 font-medium truncate">{m.summary || "Untitled meeting"}</p>
+                      <p className="text-[11px] text-sky-600">
+                        {new Date(m.start_time).toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                      </p>
+                    </div>
+                    {m.meet_link ? (
+                      <a href={m.meet_link} target="_blank" rel="noopener noreferrer"
+                        className="shrink-0 text-[11px] font-semibold px-2.5 py-1 bg-sky-600 text-white rounded-lg hover:bg-sky-700">
+                        Join
+                      </a>
+                    ) : (
+                      <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer"
+                        className="shrink-0 text-[11px] font-medium px-2.5 py-1 border border-sky-300 text-sky-700 rounded-lg hover:bg-sky-100">
+                        Open
+                      </a>
+                    )}
+                  </div>
                 ))}
               </div>
-            </a>
+            </div>
           )}
         </div>
       )}

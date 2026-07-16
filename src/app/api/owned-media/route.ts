@@ -37,6 +37,7 @@ async function syncToDistro(prop: OwnedMediaProperty) {
       rate_carousel: pricing.carousel || null,
       rate_collab_post: pricing.collab || null,
       notes: `Owned media property — synced from Owned Media panel`,
+      influencer_type: "page",   // owned properties live in Community Pages, not Creators
       is_owned: true,
       is_active: true,
       updated_at: new Date().toISOString(),
