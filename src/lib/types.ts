@@ -22,6 +22,7 @@ export const ALL_MODULES = [
   "owned_media",
   "todos",
   "idea_dump",
+  "friends_of_bcc",
   "admin_access",
 ] as const;
 
@@ -42,6 +43,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   owned_media: "Owned Media",
   todos: "To-Dos",
   idea_dump: "Idea Dump",
+  friends_of_bcc: "Friends of BCC",
   admin_access: "Admin Panel",
 };
 
@@ -61,6 +63,7 @@ export const MODULE_ROUTES: Record<AppModule, string> = {
   owned_media: "/dashboard/owned-media",
   todos: "/dashboard/todos",
   idea_dump: "/dashboard/ideas",
+  friends_of_bcc: "/dashboard/friends",
   admin_access: "/dashboard/admin",
 };
 

@@ -213,3 +213,23 @@ create policy "reach_outs_own" on reach_outs
 
 -- ─── Lead ownership (member-scoped pipeline visibility) ──────────────────────
 alter table leads add column if not exists created_by uuid references profiles(id) on delete set null;
+
+-- ─── Friends of BCC (shared network list) ────────────────────────────────────
+create table if not exists friends_of_bcc (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  company text,
+  city text,
+  phone text,
+  email text,
+  linkedin text,
+  relationship text,
+  notes text,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table friends_of_bcc enable row level security;
+drop policy if exists "friends_all" on friends_of_bcc;
+create policy "friends_all" on friends_of_bcc
+  for all to authenticated using (true) with check (true);

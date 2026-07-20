@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Briefcase, Network, UserCircle,
   LogOut, ChevronRight, Shield,
   MessageSquareDot, Building2, BarChart3, Users2, FileBarChart2, Share2,
-  CheckSquare, IndianRupee, FlaskConical, Radio, ListTodo, Lightbulb,
+  CheckSquare, IndianRupee, FlaskConical, Radio, ListTodo, Lightbulb, HeartHandshake,
   Menu, X,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
@@ -33,6 +33,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/tasks", icon: CheckSquare, label: "Tasks", module: "tasks" as const },
   { href: "/dashboard/todos", icon: ListTodo, label: "To-Dos", module: "todos" as const },
   { href: "/dashboard/ideas", icon: Lightbulb, label: "Idea Dump", module: "idea_dump" as const },
+  { href: "/dashboard/friends", icon: HeartHandshake, label: "Friends of BCC", module: "friends_of_bcc" as const },
   { href: "/dashboard/salary", icon: IndianRupee, label: "Salary & Payouts", module: "salary" as const },
   { href: "/dashboard/research", icon: FlaskConical, label: "Research Hub", module: "research_hub" as const },
   { href: "/dashboard/vendors", icon: Building2, label: "Vendor Management", module: "vendor_management" as const },
