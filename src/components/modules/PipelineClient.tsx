@@ -1102,7 +1102,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                   {form.engagement_type === "retainer" ? "Total Contract Value (₹)" : "Deal Value (₹)"}
                 </label>
-                <input type="number" value={form.deal_value} onChange={e => setForm({ ...form, deal_value: e.target.value })}
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={form.deal_value} onChange={e => setForm({ ...form, deal_value: e.target.value })}
                   placeholder="500000"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
@@ -1110,7 +1110,7 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
               {form.engagement_type === "retainer" && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Monthly Retainer Value (₹)</label>
-                  <input type="number" value={form.monthly_value} onChange={e => setForm({ ...form, monthly_value: e.target.value })}
+                  <input type="number" onWheel={e => e.currentTarget.blur()} value={form.monthly_value} onChange={e => setForm({ ...form, monthly_value: e.target.value })}
                     placeholder="50000"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>

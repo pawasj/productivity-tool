@@ -580,7 +580,7 @@ ${selectedBrief.campaign_objective ? `
                 <div key={key}>
                   <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
                   <input
-                    type="number"
+                    type="number" onWheel={e => e.currentTarget.blur()}
                     value={targets[key]}
                     onChange={e => setTargets(prev => ({ ...prev, [key]: e.target.value }))}
                     placeholder="e.g. 500000"
@@ -707,7 +707,7 @@ ${selectedBrief.campaign_objective ? `
                         {(["views", "reach", "likes", "comments", "shares"] as const).map(field => (
                           <td key={field} className="px-4 py-3">
                             <input
-                              type="number"
+                              type="number" onWheel={e => e.currentTarget.blur()}
                               value={row[field] ?? ""}
                               onChange={e => updateMetric(i, field, e.target.value)}
                               onBlur={() => saveResult()}

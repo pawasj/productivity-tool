@@ -676,7 +676,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
             <label className="block text-xs font-medium text-slate-700 mb-1">Total Budget (₹)
               {brief.engagement_model === "retainer" && <span className="text-violet-600 ml-1">(per month)</span>}
             </label>
-            <input type="number" value={brief.total_budget} onChange={e => sb("total_budget", e.target.value)} disabled={approved}
+            <input type="number" onWheel={e => e.currentTarget.blur()} value={brief.total_budget} onChange={e => sb("total_budget", e.target.value)} disabled={approved}
               placeholder="e.g. 5000000"
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
           </div>
@@ -742,7 +742,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
 
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">No. of Pages / Handles</label>
-            <input type="number" min={1} value={brief.num_pages} onChange={e => sb("num_pages", e.target.value)} disabled={approved}
+            <input type="number" onWheel={e => e.currentTarget.blur()} min={1} value={brief.num_pages} onChange={e => sb("num_pages", e.target.value)} disabled={approved}
               placeholder="e.g. 10"
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
             <p className="text-xs text-slate-400 mt-0.5">How many pages / creators to include in the plan</p>
@@ -750,7 +750,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
 
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">Total No. of Deliverables</label>
-            <input type="number" min={1} value={brief.num_deliverables} onChange={e => sb("num_deliverables", e.target.value)} disabled={approved}
+            <input type="number" onWheel={e => e.currentTarget.blur()} min={1} value={brief.num_deliverables} onChange={e => sb("num_deliverables", e.target.value)} disabled={approved}
               placeholder="e.g. 25"
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
             <p className="text-xs text-slate-400 mt-0.5">AI will distribute these across all pages (e.g. 15 pages × 25 deliverables = some pages get 2)</p>
@@ -1048,8 +1048,8 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                           <td className="px-3 py-2"><input value={row.category} onChange={e => updateRow(i, "category", e.target.value)} className="w-24 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-xs text-slate-600" /></td>
                           <td className="px-3 py-2"><input value={row.followers} onChange={e => updateRow(i, "followers", e.target.value)} className="w-16 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-xs text-slate-600" /></td>
                           <td className="px-3 py-2"><input value={row.deliverable_type} onChange={e => updateRow(i, "deliverable_type", e.target.value)} className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-xs text-slate-600" /></td>
-                          <td className="px-3 py-2 text-center"><input type="number" value={row.quantity} onChange={e => updateRow(i, "quantity", Number(e.target.value))} className="w-10 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-center text-slate-700 font-medium" /></td>
-                          <td className="px-3 py-2 text-right"><input type="number" value={row.rate} onChange={e => updateRow(i, "rate", Number(e.target.value))} className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-right text-slate-600 text-xs" /></td>
+                          <td className="px-3 py-2 text-center"><input type="number" onWheel={e => e.currentTarget.blur()} value={row.quantity} onChange={e => updateRow(i, "quantity", Number(e.target.value))} className="w-10 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-center text-slate-700 font-medium" /></td>
+                          <td className="px-3 py-2 text-right"><input type="number" onWheel={e => e.currentTarget.blur()} value={row.rate} onChange={e => updateRow(i, "rate", Number(e.target.value))} className="w-20 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none py-0.5 text-right text-slate-600 text-xs" /></td>
                           <td className="px-3 py-2 text-right text-slate-700 font-medium text-xs">₹{Number(row.total_cost).toLocaleString("en-IN")}</td>
                           <td className="px-3 py-2 text-right text-blue-600 font-medium text-xs bg-blue-50/30">₹{Number(row.client_rate).toLocaleString("en-IN")}</td>
                           <td className="px-3 py-2 text-right text-blue-700 font-bold text-xs bg-blue-50/30">₹{Number(row.client_total).toLocaleString("en-IN")}</td>
@@ -1344,7 +1344,7 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
                 <label className="block text-xs font-medium text-slate-500 mb-2">Agency Margin %</label>
                 <div className="flex items-center gap-3">
                   <input
-                    type="number" min={0} max={100} value={pendingMargin}
+                    type="number" onWheel={e => e.currentTarget.blur()} min={0} max={100} value={pendingMargin}
                     onChange={e => setPendingMargin(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter") { const m = Math.min(100, Math.max(0, Number(pendingMargin) || 0)); setAgencyMargin(m); generatePlan(m); } }}
                     className="flex-1 px-4 py-3 text-2xl font-bold text-center border-2 border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"

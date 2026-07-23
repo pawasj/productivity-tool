@@ -591,7 +591,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
                       <label className="block text-xs font-medium text-slate-700 mb-1">
                         {form.engagement_type === "retainer" ? "Monthly Value (₹)" : "Deal Value (₹)"}
                       </label>
-                      <input type="number" value={form.engagement_type === "retainer" ? (form.monthly_value || "") : (form.amount || "")}
+                      <input type="number" onWheel={e => e.currentTarget.blur()} value={form.engagement_type === "retainer" ? (form.monthly_value || "") : (form.amount || "")}
                         onChange={e => sf(form.engagement_type === "retainer" ? "monthly_value" : "amount", e.target.value)}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
                     </div>
@@ -737,7 +737,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
                                 </div>
                                 <div>
                                   <label className="block text-xs text-slate-500 mb-1">Monthly Cost (₹)</label>
-                                  <input type="number" value={o.outsource_cost || ""} placeholder="0"
+                                  <input type="number" onWheel={e => e.currentTarget.blur()} value={o.outsource_cost || ""} placeholder="0"
                                     onChange={e => updateOffering(o.service, { outsource_cost: parseFloat(e.target.value) || 0 })}
                                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
                                 </div>

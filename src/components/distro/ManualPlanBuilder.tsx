@@ -245,7 +245,7 @@ export default function ManualPlanBuilder({ agencyMargin, onAdd, onClose }: Prop
                     </div>
                     <div>
                       <label className="text-[10px] text-slate-500 font-medium uppercase">Agency Rate (₹)</label>
-                      <input type="number" value={cfg.rate} onChange={e => updateConfig(id, "rate", Number(e.target.value))}
+                      <input type="number" onWheel={e => e.currentTarget.blur()} value={cfg.rate} onChange={e => updateConfig(id, "rate", Number(e.target.value))}
                         className="w-full mt-0.5 px-2 py-1 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal-500" />
                       {cfg.rate > 0 && (
                         <p className="text-[10px] text-blue-600 mt-0.5">

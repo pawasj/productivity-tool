@@ -434,7 +434,7 @@ export function InfluencerTable({ subtype }: Props) {
                   {RATE_FIELDS.map(({ key, label }) => (
                     <div key={key}>
                       <label className="block text-xs text-slate-500 mb-1">{label}</label>
-                      <input type="number" value={(form as Record<string, unknown>)[key] as number || ""}
+                      <input type="number" onWheel={e => e.currentTarget.blur()} value={(form as Record<string, unknown>)[key] as number || ""}
                         onChange={e => sf(key as keyof Influencer, parseFloat(e.target.value) || undefined)}
                         placeholder="0" className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>

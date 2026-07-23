@@ -521,7 +521,7 @@ export default function SalaryClient({ userId, verticals, members: initialMember
                                 <td className="px-4 py-3">
                                   <div className="relative">
                                     <span className="absolute left-2.5 top-2 text-xs text-slate-400 font-medium">₹</span>
-                                    <input autoFocus type="number" value={editAmount} onChange={e => setEditAmount(e.target.value)}
+                                    <input autoFocus onWheel={e => e.currentTarget.blur()} type="number" value={editAmount} onChange={e => setEditAmount(e.target.value)}
                                       placeholder="Amount"
                                       className="w-28 pl-6 pr-2 py-1.5 border border-emerald-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium" />
                                   </div>
@@ -711,7 +711,7 @@ export default function SalaryClient({ userId, verticals, members: initialMember
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">Amount (₹) *</label>
-                  <input type="number" value={addForm.amount} onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))}
+                  <input type="number" onWheel={e => e.currentTarget.blur()} value={addForm.amount} onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))}
                     placeholder="0"
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>

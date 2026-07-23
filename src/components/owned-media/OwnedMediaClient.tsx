@@ -338,7 +338,7 @@ export default function OwnedMediaClient() {
                   {METRIC_PLATFORMS.map(pl => (
                     <div key={pl.key}>
                       <label className="block text-xs text-slate-500 mb-0.5">{pl.label} {pl.key === "youtube" || pl.key === "substack" ? "subs" : pl.key === "reddit" ? "members" : "followers"}</label>
-                      <input type="number" value={form.metrics[pl.key] || ""}
+                      <input type="number" onWheel={e => e.currentTarget.blur()} value={form.metrics[pl.key] || ""}
                         onChange={e => setForm(f => ({ ...f, metrics: { ...f.metrics, [pl.key]: e.target.value } }))}
                         placeholder="—"
                         className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-orange-400" />
@@ -354,7 +354,7 @@ export default function OwnedMediaClient() {
                   {CADENCE_FIELDS.map(f => (
                     <div key={f}>
                       <label className="block text-xs text-slate-500 mb-0.5 capitalize">{f}</label>
-                      <input type="number" value={form.cadence[f] || ""}
+                      <input type="number" onWheel={e => e.currentTarget.blur()} value={form.cadence[f] || ""}
                         onChange={e => setForm(fm => ({ ...fm, cadence: { ...fm.cadence, [f]: e.target.value } }))}
                         placeholder="0"
                         className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-orange-400" />
@@ -370,7 +370,7 @@ export default function OwnedMediaClient() {
                   {PRICING_FIELDS.map(f => (
                     <div key={f}>
                       <label className="block text-xs text-slate-500 mb-0.5 capitalize">{f}</label>
-                      <input type="number" value={form.pricing[f] || ""}
+                      <input type="number" onWheel={e => e.currentTarget.blur()} value={form.pricing[f] || ""}
                         onChange={e => setForm(fm => ({ ...fm, pricing: { ...fm.pricing, [f]: e.target.value } }))}
                         placeholder="₹"
                         className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-orange-400" />

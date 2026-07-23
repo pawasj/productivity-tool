@@ -361,7 +361,7 @@ export default function JoinForm() {
                         <label className="block text-[11px] text-slate-500 mb-1">{label}</label>
                         <div className="relative">
                           <span className="absolute left-2.5 top-2.5 text-xs text-slate-400">₹</span>
-                          <input type="number" value={p[field]} onChange={e => updatePlatform(idx, field, e.target.value)}
+                          <input type="number" onWheel={e => e.currentTarget.blur()} value={p[field]} onChange={e => updatePlatform(idx, field, e.target.value)}
                             placeholder="0"
                             className="w-full pl-6 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                         </div>

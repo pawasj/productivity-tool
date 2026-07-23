@@ -380,7 +380,7 @@ export default function RetainerPlansSection({
             <div className="p-5 space-y-4">
               <div className="flex items-center gap-3">
                 <input
-                  type="number" min={0} max={100} value={pendingMargin}
+                  type="number" onWheel={e => e.currentTarget.blur()} min={0} max={100} value={pendingMargin}
                   onChange={e => setPendingMargin(e.target.value)}
                   className="flex-1 px-4 py-3 text-2xl font-bold text-center border-2 border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   autoFocus
