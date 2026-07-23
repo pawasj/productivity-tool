@@ -162,6 +162,41 @@ function schemaFor(type: string): string {
 }`;
 }
 
+// Close any open braces/brackets/strings so a truncated JSON blob still parses
+function autoClose(s: string): string {
+  const stack: string[] = [];
+  let inStr = false, esc = false;
+  for (const ch of s) {
+    if (esc) { esc = false; continue; }
+    if (ch === "\\") { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === "{" || ch === "[") stack.push(ch);
+    else if (ch === "}" && stack[stack.length - 1] === "{") stack.pop();
+    else if (ch === "]" && stack[stack.length - 1] === "[") stack.pop();
+  }
+  let out = s;
+  if (inStr) out += '"';
+  out = out.replace(/,\s*$/, "");
+  while (stack.length) out += stack.pop() === "{" ? "}" : "]";
+  return out;
+}
+
+// Robustly extract a JSON object from an LLM response (repairs trailing commas,
+// strips control chars, and salvages truncated output by auto-closing).
+function robustParseJson(text: string): Record<string, unknown> | null {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  const end = text.lastIndexOf("}");
+  const raw = end > start ? text.slice(start, end + 1) : text.slice(start);
+  const clean = (x: string) => x
+    .replace(/,(\s*[}\]])/g, "$1")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+  try { return JSON.parse(clean(raw)); } catch { /* try salvage */ }
+  try { return JSON.parse(clean(autoClose(text.slice(start)))); } catch { /* give up */ }
+  return null;
+}
+
 async function runAnalysis(brandName: string, links: string[], types: string[], month: string): Promise<Record<string, unknown>> {
   const linksContext = links.length > 0 ? `\n\nReference links for this brand:\n${links.join("\n")}` : "";
 
@@ -185,13 +220,13 @@ ${schemaFor(type)}`;
       const messages: Anthropic.MessageParam[] = [{ role: "user", content: userPrompt }];
 
       // Use web search for research types, direct for campaign ideas too but still search for brand context
-      let response = await (anthropic.beta.messages.create as Function)({
+      let response = await (anthropic.beta.messages.stream as Function)({
         model: "claude-sonnet-4-6",
-        max_tokens: 6000,
+        max_tokens: 16000,
         tools: [{ type: "web_search_20250305", name: "web_search" }],
         messages,
         betas: ["web-search-2025-03-05"],
-      });
+      }).finalMessage();
 
       // Handle tool use loop
       while (response.stop_reason === "tool_use") {
@@ -205,22 +240,22 @@ ${schemaFor(type)}`;
         messages.push({ role: "assistant", content: response.content });
         messages.push({ role: "user", content: toolResults });
 
-        response = await (anthropic.beta.messages.create as Function)({
+        response = await (anthropic.beta.messages.stream as Function)({
           model: "claude-sonnet-4-6",
-          max_tokens: 6000,
+          max_tokens: 16000,
           tools: [{ type: "web_search_20250305", name: "web_search" }],
           messages,
           betas: ["web-search-2025-03-05"],
-        });
+        }).finalMessage();
       }
 
       // Extract JSON from the final text response
       const text = response.content.filter((b: Anthropic.ContentBlock) => b.type === "text")
         .map((b: Anthropic.TextBlock) => b.text).join("");
 
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        results[type] = JSON.parse(jsonMatch[0]);
+      const parsed = robustParseJson(text);
+      if (parsed) {
+        results[type] = parsed;
       } else {
         results[type] = { summary: text, raw: true };
       }
