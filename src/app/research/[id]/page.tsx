@@ -31,6 +31,9 @@ export default async function ResearchReportPage({ params }: { params: Promise<{
   const hasSent = types.includes("sentiment_analysis");
   const hasSocial = types.includes("social_media_listening");
   const hasCamp = types.includes("campaign_ideas");
+  const hasSMM = types.includes("social_media_management");
+  const hasDist = types.includes("distribution_strategy");
+  const hasProd = types.includes("production_ips");
 
   const sentPos = g<number>("sentiment_analysis.positive_pct", 0);
   const sentNeu = g<number>("sentiment_analysis.neutral_pct", 0);
@@ -163,7 +166,7 @@ window.addEventListener('load', function() {
               <div style={{ alignSelf: "flex-end" }}>
                 {types.map((t: string) => (
                   <span key={t} className="type-tag">
-                    {t === "competitor_analysis" ? "🏆 Competitor" : t === "sentiment_analysis" ? "💬 Sentiment" : t === "social_media_listening" ? "📡 Social Listening" : "✨ Campaign Ideas"}
+                    {t === "competitor_analysis" ? "🏆 Competitor" : t === "sentiment_analysis" ? "💬 Sentiment" : t === "social_media_listening" ? "📡 Social Listening" : t === "social_media_management" ? "📅 Social Media Mgmt" : t === "distribution_strategy" ? "🚀 Distribution" : t === "production_ips" ? "🎬 Production & IPs" : "✨ Campaign Ideas"}
                   </span>
                 ))}
               </div>
@@ -445,6 +448,196 @@ window.addEventListener('load', function() {
               )}
             </div>
           )}
+
+          {/* ── SOCIAL MEDIA MANAGEMENT ── */}
+          {hasSMM && !!result.social_media_management && (() => {
+            const smm = (path: string, fb: unknown = []) => g(`social_media_management.${path}`, fb);
+            const buckets = arr<Record<string, unknown>>(smm("content_buckets"));
+            const igPosts = arr<Record<string, string>>(smm("instagram.post_ideas"));
+            const igStories = arr<string>(smm("instagram.story_ideas"));
+            const igSeries = arr<Record<string, string>>(smm("instagram.series"));
+            const liPosts = arr<Record<string, string>>(smm("linkedin.post_ideas"));
+            const liThemes = arr<string>(smm("linkedin.themes"));
+            const calendar = arr<Record<string, unknown>>(smm("calendar"));
+            const moments = arr<string>(smm("cultural_moments"));
+            const smmHashtags = arr<string>(smm("hashtags"));
+            const smmRecs = arr<string>(smm("recommendations"));
+            return (
+            <div className="card page-break">
+              <div className="section-title">📅 Social Media Management {g<string>("social_media_management.month", "") ? `· ${g<string>("social_media_management.month", "")}` : ""}</div>
+              {g<string>("social_media_management.summary", "") && <p style={{ marginBottom: "12px", fontSize: "15px", lineHeight: 1.6 }}>{g<string>("social_media_management.summary", "")}</p>}
+              {g<string>("social_media_management.brand_voice", "") && (
+                <div style={{ padding: "8px 14px", background: "#faf5ff", borderRadius: "8px", fontSize: "13px", color: "#7c3aed", marginBottom: "20px" }}><strong>Brand Voice:</strong> {g<string>("social_media_management.brand_voice", "")}</div>
+              )}
+
+              {buckets.length > 0 && <><div style={{ fontWeight: 700, fontSize: "15px", margin: "8px 0 12px" }}>Content Buckets</div>
+              <div className="grid2">{buckets.map((b, i) => (
+                <div key={i} className="comp-card" style={{ borderLeft: `3px solid ${COLORS[i % COLORS.length]}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "6px" }}><span style={{ fontWeight: 700 }}>{s(b.name)}</span>{!!b.cadence && <span className="badge" style={{ background: "#f1f5f9", color: "#475569" }}>{s(b.cadence)}</span>}</div>
+                  <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0" }}>{s(b.description)}</p>
+                  {arr<string>(b.sample_ideas).map((si, j) => <div key={j} className="insight-item"><div className="insight-dot" /><span style={{ fontSize: "13px" }}>{si}</span></div>)}
+                </div>
+              ))}</div></>}
+
+              <div className="grid2" style={{ marginTop: "18px" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "8px", color: "#E1306C" }}>📸 Instagram</div>
+                  {g<string>("social_media_management.instagram.strategy", "") && <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "10px" }}>{g<string>("social_media_management.instagram.strategy", "")}</p>}
+                  {igPosts.map((p, i) => (
+                    <div key={i} style={{ padding: "10px 12px", background: "#fdf2f8", borderRadius: "10px", marginBottom: "8px", borderLeft: "3px solid #E1306C" }}>
+                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "4px" }}>{p.format && <span className="badge" style={{ background: "#fce7f3", color: "#be185d" }}>{p.format}</span>}{p.bucket && <span className="badge" style={{ background: "#f1f5f9", color: "#475569" }}>{p.bucket}</span>}</div>
+                      <div style={{ fontSize: "13px", color: "#334155" }}>{p.concept}</div>
+                      {p.hook && <div style={{ fontSize: "12px", fontStyle: "italic", color: "#be185d", marginTop: "4px" }}>Hook: {p.hook}</div>}
+                    </div>
+                  ))}
+                  {igSeries.map((se, i) => <div key={i} style={{ fontSize: "13px", padding: "6px 0" }}>🔁 <strong>{se.name}:</strong> {se.concept}</div>)}
+                  {igStories.length > 0 && <div style={{ fontSize: "12px", color: "#64748b", marginTop: "6px" }}>Stories: {igStories.join(" · ")}</div>}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "8px", color: "#0A66C2" }}>💼 LinkedIn</div>
+                  {g<string>("social_media_management.linkedin.strategy", "") && <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "10px" }}>{g<string>("social_media_management.linkedin.strategy", "")}</p>}
+                  {liPosts.map((p, i) => (
+                    <div key={i} style={{ padding: "10px 12px", background: "#eff6ff", borderRadius: "10px", marginBottom: "8px", borderLeft: "3px solid #0A66C2" }}>
+                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "4px" }}>{p.format && <span className="badge" style={{ background: "#dbeafe", color: "#1e40af" }}>{p.format}</span>}{p.bucket && <span className="badge" style={{ background: "#f1f5f9", color: "#475569" }}>{p.bucket}</span>}</div>
+                      <div style={{ fontSize: "13px", color: "#334155" }}>{p.concept}</div>
+                      {p.hook && <div style={{ fontSize: "12px", fontStyle: "italic", color: "#1e40af", marginTop: "4px" }}>Hook: {p.hook}</div>}
+                    </div>
+                  ))}
+                  {liThemes.length > 0 && <div style={{ fontSize: "12px", color: "#64748b", marginTop: "6px" }}>Themes: {liThemes.join(" · ")}</div>}
+                </div>
+              </div>
+
+              {calendar.length > 0 && <><div style={{ fontWeight: 700, fontSize: "15px", margin: "18px 0 10px" }}>🗓️ Month Calendar</div>
+              {calendar.map((w, i) => (
+                <div key={i} className="cal-block" style={{ marginTop: "8px" }}>
+                  <div style={{ fontWeight: 700, color: "#4f46e5" }}>{s(w.week)}{!!w.theme && ` — ${s(w.theme)}`}</div>
+                  {arr<string>(w.instagram).length > 0 && <div style={{ fontSize: "13px", marginTop: "4px" }}>📸 {arr<string>(w.instagram).join(" · ")}</div>}
+                  {arr<string>(w.linkedin).length > 0 && <div style={{ fontSize: "13px", marginTop: "2px" }}>💼 {arr<string>(w.linkedin).join(" · ")}</div>}
+                </div>
+              ))}</>}
+
+              {moments.length > 0 && <div style={{ marginTop: "16px" }}><strong style={{ fontSize: "13px" }}>🎉 Cultural Moments:</strong> {moments.map((m, i) => <span key={i} className="badge" style={{ background: "#fef3c7", color: "#92400e" }}>{m}</span>)}</div>}
+              {smmHashtags.length > 0 && <div style={{ marginTop: "10px" }}>{smmHashtags.map((h, i) => <span key={i} className="badge" style={{ background: "#ede9fe", color: "#6d28d9" }}>{h}</span>)}</div>}
+              {smmRecs.map((r, i) => <div key={i} className="insight-item"><div className="insight-dot" /><span style={{ fontSize: "14px" }}>{r}</span></div>)}
+            </div>
+            );
+          })()}
+
+          {/* ── DISTRIBUTION STRATEGY ── */}
+          {hasDist && !!result.distribution_strategy && (() => {
+            const d = (p: string, fb: unknown = []) => g(`distribution_strategy.${p}`, fb);
+            const nb = arr<Record<string, string>>(d("narrative_buckets"));
+            const arcs = arr<Record<string, unknown>>(d("content_arcs"));
+            const amp = g<Record<string, unknown>>("distribution_strategy.amplification", {});
+            const playbook = arr<Record<string, unknown>>(d("platform_playbook"));
+            const seeding = arr<string>(d("seeding_ideas"));
+            const distRecs = arr<string>(d("recommendations"));
+            const ampRows: { label: string; icon: string; key: string }[] = [
+              { label: "Meme Pages", icon: "😂", key: "meme_pages" },
+              { label: "Pop-Culture Pages", icon: "🎭", key: "pop_culture_pages" },
+              { label: "News Pages", icon: "📰", key: "news_pages" },
+              { label: "LinkedIn Profiles", icon: "💼", key: "linkedin_profiles" },
+              { label: "Reddit", icon: "👽", key: "reddit" },
+              { label: "Other", icon: "✨", key: "other" },
+            ];
+            return (
+            <div className="card page-break">
+              <div className="section-title">🚀 Distribution &amp; Amplification</div>
+              {g<string>("distribution_strategy.summary", "") && <p style={{ marginBottom: "16px", fontSize: "15px", lineHeight: 1.6 }}>{g<string>("distribution_strategy.summary", "")}</p>}
+
+              {nb.length > 0 && <><div style={{ fontWeight: 700, fontSize: "15px", margin: "8px 0 10px" }}>Narrative Buckets</div>
+              {nb.map((b, i) => (
+                <div key={i} className="comp-card" style={{ borderLeft: `4px solid ${COLORS[i % COLORS.length]}` }}>
+                  <div style={{ fontWeight: 700, fontSize: "15px" }}>{s(b.name)}</div>
+                  {b.angle && <p style={{ fontSize: "13px", color: "#475569", margin: "3px 0" }}>{s(b.angle)}</p>}
+                  {b.why_it_works && <div style={{ fontSize: "12px", color: "#059669" }}>✓ {s(b.why_it_works)}</div>}
+                </div>
+              ))}</>}
+
+              {arcs.length > 0 && <><div style={{ fontWeight: 700, fontSize: "15px", margin: "18px 0 10px" }}>Content Arcs</div>
+              {arcs.map((a, i) => (
+                <div key={i} className="campaign-card" style={{ borderLeftColor: COLORS[i % COLORS.length] }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "6px" }}>
+                    <div style={{ fontWeight: 800, fontSize: "16px" }}>{s(a.name)}</div>
+                    <div>{arr<string>(a.platforms).map((p, j) => <span key={j} className="badge" style={{ background: "#eff6ff", color: "#3b82f6" }}>{p}</span>)}</div>
+                  </div>
+                  <p style={{ fontSize: "14px", color: "#475569", margin: "6px 0" }}>{s(a.description)}</p>
+                  {arr<string>(a.beats).map((be, j) => <div key={j} className="insight-item"><div className="insight-dot" /><span style={{ fontSize: "13px" }}>{be}</span></div>)}
+                </div>
+              ))}</>}
+
+              <div style={{ fontWeight: 700, fontSize: "15px", margin: "18px 0 10px" }}>Amplification Playbook</div>
+              <div className="grid2">
+                {ampRows.filter(row => arr<string>((amp as Record<string, unknown>)[row.key]).length > 0).map(row => (
+                  <div key={row.key} className="comp-card">
+                    <div style={{ fontWeight: 700, marginBottom: "6px" }}>{row.icon} {row.label}</div>
+                    {arr<string>((amp as Record<string, unknown>)[row.key]).map((x, j) => <div key={j} className="insight-item"><div className="insight-dot" /><span style={{ fontSize: "13px" }}>{x}</span></div>)}
+                  </div>
+                ))}
+              </div>
+
+              {playbook.length > 0 && <><div style={{ fontWeight: 700, fontSize: "15px", margin: "18px 0 10px" }}>Platform Playbook</div>
+              {playbook.map((p, i) => (
+                <div key={i} className="platform-row">
+                  <div><strong>{s(p.platform)}</strong><div style={{ fontSize: "13px", color: "#64748b" }}>{s(p.approach)}</div></div>
+                  <div style={{ textAlign: "right" }}>{arr<string>(p.formats).map((f, j) => <span key={j} className="badge" style={{ background: "#f1f5f9", color: "#475569" }}>{f}</span>)}</div>
+                </div>
+              ))}</>}
+
+              {seeding.length > 0 && <div style={{ marginTop: "14px" }}><strong style={{ fontSize: "13px" }}>🌱 Seeding:</strong>{seeding.map((x, i) => <div key={i} className="insight-item"><div className="insight-dot" /><span style={{ fontSize: "13px" }}>{x}</span></div>)}</div>}
+              {distRecs.map((r, i) => <div key={i} className="insight-item"><div className="insight-dot" /><span style={{ fontSize: "14px" }}>{r}</span></div>)}
+            </div>
+            );
+          })()}
+
+          {/* ── PRODUCTION & IPs ── */}
+          {hasProd && !!result.production_ips && (() => {
+            const ips = arr<Record<string, unknown>>(g("production_ips.ip_ideas", []));
+            const contentIdeas = arr<Record<string, string>>(g("production_ips.content_ideas", []));
+            const campIdeas = arr<Record<string, string>>(g("production_ips.campaign_ideas", []));
+            const prodRecs = arr<string>(g("production_ips.recommendations", []));
+            return (
+            <div className="card page-break">
+              <div className="section-title">🎬 Production &amp; IP Ideas</div>
+              {g<string>("production_ips.summary", "") && <p style={{ marginBottom: "16px", fontSize: "15px", lineHeight: 1.6 }}>{g<string>("production_ips.summary", "")}</p>}
+
+              <div style={{ fontWeight: 700, fontSize: "15px", margin: "8px 0 10px" }}>💡 Original IP Ideas</div>
+              {ips.map((ip, i) => (
+                <div key={i} className="campaign-card" style={{ borderLeftColor: COLORS[i % COLORS.length] }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "6px" }}>
+                    <div style={{ fontWeight: 800, fontSize: "17px" }}>{s(ip.title)}</div>
+                    <div>{!!ip.format && <span className="badge" style={{ background: "#f1f5f9", color: "#475569" }}>{s(ip.format)}</span>}{arr<string>(ip.platforms).map((p, j) => <span key={j} className="badge" style={{ background: "#eff6ff", color: "#3b82f6" }}>{p}</span>)}</div>
+                  </div>
+                  <p style={{ fontSize: "14px", color: "#475569", margin: "6px 0" }}>{s(ip.concept)}</p>
+                  {!!ip.hook && <div style={{ fontStyle: "italic", fontWeight: 700, color: "#7c3aed", fontSize: "14px" }}>&ldquo;{s(ip.hook)}&rdquo;</div>}
+                  {!!ip.monetization && <div style={{ marginTop: "8px", padding: "8px 12px", background: "#ecfdf5", borderRadius: "8px", fontSize: "13px", color: "#065f46" }}>💰 {s(ip.monetization)}</div>}
+                </div>
+              ))}
+
+              {contentIdeas.length > 0 && <><div style={{ fontWeight: 700, fontSize: "15px", margin: "18px 0 10px" }}>Content Ideas</div>
+              <div className="grid2">{contentIdeas.map((c, i) => (
+                <div key={i} className="comp-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "6px" }}><span style={{ fontWeight: 700 }}>{c.title}</span>{c.format && <span className="badge" style={{ background: "#f1f5f9", color: "#475569" }}>{c.format}</span>}</div>
+                  <p style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>{c.concept}</p>
+                </div>
+              ))}</div></>}
+
+              {campIdeas.length > 0 && <><div style={{ fontWeight: 700, fontSize: "15px", margin: "18px 0 10px" }}>Campaign Ideas</div>
+              {campIdeas.map((c, i) => (
+                <div key={i} className="campaign-card" style={{ borderLeftColor: "#059669" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "6px" }}>
+                    <div style={{ fontWeight: 800, fontSize: "16px" }}>{c.title}</div>
+                    <div>{c.format && <span className="badge" style={{ background: "#f1f5f9", color: "#475569" }}>{c.format}</span>}{c.platform && <span className="badge" style={{ background: "#eff6ff", color: "#3b82f6" }}>{c.platform}</span>}</div>
+                  </div>
+                  <p style={{ fontSize: "14px", color: "#475569", margin: "6px 0" }}>{c.concept}</p>
+                  {c.viral_hook && <div style={{ padding: "8px 12px", background: "#fefce8", borderRadius: "8px", fontSize: "13px", color: "#92400e" }}>⚡ {c.viral_hook}</div>}
+                </div>
+              ))}</>}
+
+              {prodRecs.map((r, i) => <div key={i} className="insight-item"><div className="insight-dot" /><span style={{ fontSize: "14px" }}>{r}</span></div>)}
+            </div>
+            );
+          })()}
 
           <div style={{ textAlign: "center", padding: "24px 0", color: "#cbd5e1", fontSize: "12px" }}>
             Generated by BCC Research Hub · {date}

@@ -16,6 +16,9 @@ interface ReportMeta {
 }
 
 const ANALYSIS_OPTIONS = [
+  { id: "social_media_management", label: "Social Media Management", icon: "📅", desc: "Month-wise IG + LinkedIn plan, content buckets, calendar & ideas" },
+  { id: "distribution_strategy", label: "Distribution", icon: "🚀", desc: "Narrative buckets, content arcs & amplification (memes, PR, Reddit, LinkedIn)" },
+  { id: "production_ips", label: "Production & IPs", icon: "🎬", desc: "Original IP ideas, content formats & campaign ideas to produce" },
   { id: "competitor_analysis", label: "Competitor Analysis", icon: "🏆", desc: "Map competitors, SWOT, market position" },
   { id: "sentiment_analysis", label: "Sentiment Analysis", icon: "💬", desc: "Public perception, reviews, platform sentiment" },
   { id: "social_media_listening", label: "Social Media Listening", icon: "📡", desc: "Platform presence, hashtags, viral moments" },
@@ -23,6 +26,9 @@ const ANALYSIS_OPTIONS = [
 ];
 
 const TYPE_LABELS: Record<string, string> = {
+  social_media_management: "Social Media Management",
+  distribution_strategy: "Distribution",
+  production_ips: "Production & IPs",
   competitor_analysis: "Competitor Analysis",
   sentiment_analysis: "Sentiment Analysis",
   social_media_listening: "Social Media Listening",
@@ -36,6 +42,8 @@ export default function ResearchClient({ userId }: { userId: string }) {
   const [brandName, setBrandName] = useState("");
   const [links, setLinks] = useState<string[]>([""]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+  const now = new Date();
+  const [month, setMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [customType, setCustomType] = useState("");
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState("");
@@ -73,11 +81,14 @@ export default function ResearchClient({ userId }: { userId: string }) {
     setRunning(true);
     setRunError("");
     const cleanLinks = links.filter(l => l.trim());
+    const monthLabel = selectedTypes.includes("social_media_management")
+      ? new Date(month + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" })
+      : "";
     try {
       const res = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brand_name: brandName.trim(), links: cleanLinks, analysis_types: selectedTypes }),
+        body: JSON.stringify({ brand_name: brandName.trim(), links: cleanLinks, analysis_types: selectedTypes, month: monthLabel }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Research failed");
@@ -239,7 +250,7 @@ export default function ResearchClient({ userId }: { userId: string }) {
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   <CheckSquare className="w-3.5 h-3.5 inline mr-1" />
-                  What should we research? *
+                  Purpose of this research * <span className="font-normal text-slate-400">(choose one or more)</span>
                 </label>
                 <div className="space-y-2">
                   {ANALYSIS_OPTIONS.map(opt => (
@@ -255,6 +266,18 @@ export default function ResearchClient({ userId }: { userId: string }) {
                   ))}
                 </div>
               </div>
+
+              {/* Month — only for Social Media Management */}
+              {selectedTypes.includes("social_media_management") && (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                    📅 Which month is this social plan for? *
+                  </label>
+                  <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                  <p className="text-xs text-slate-400 mt-1">The plan, calendar and cultural moments will be built specifically for this month.</p>
+                </div>
+              )}
 
               {/* Estimated time */}
               {selectedTypes.length > 0 && (
