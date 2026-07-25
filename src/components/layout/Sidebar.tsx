@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Briefcase, Network, UserCircle,
   LogOut, ChevronRight, Shield,
   MessageSquareDot, Building2, BarChart3, Users2, FileBarChart2, Share2,
-  CheckSquare, IndianRupee, FlaskConical, Radio, ListTodo, Lightbulb, HeartHandshake,
+  CheckSquare, IndianRupee, FlaskConical, Radio, ListTodo, Lightbulb, HeartHandshake, Megaphone,
   Menu, X,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
@@ -38,6 +38,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/research", icon: FlaskConical, label: "Research Hub", module: "research_hub" as const },
   { href: "/dashboard/vendors", icon: Building2, label: "Vendor Management", module: "vendor_management" as const },
   { href: "/dashboard/owned-media", icon: Radio, label: "Owned Media", module: "owned_media" as const },
+  { href: "/dashboard/owned-media-sales", icon: Megaphone, label: "Owned Media Sales", module: "owned_media_sales" as const },
   { href: "/dashboard/profile", icon: UserCircle, label: "My Profile", module: null },
 ];
 

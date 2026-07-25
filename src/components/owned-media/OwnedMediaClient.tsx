@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Radio, Plus, X, Loader2, RefreshCw, Pencil, Trash2, Globe, Mail,
+  LayoutGrid, CalendarDays, Users,
 } from "lucide-react";
 import { CONTENT_CATEGORIES } from "@/lib/types";
 import type { OwnedMediaProperty, OwnedMediaPlatform } from "@/lib/types";
@@ -43,6 +44,14 @@ const PLATFORMS: { key: OwnedMediaPlatform; label: string; icon: React.Component
 const METRIC_PLATFORMS = PLATFORMS.filter(p => p.key !== "website");
 
 const CADENCE_FIELDS = ["posts", "reels", "carousels", "stories", "articles", "newsletters", "videos"];
+
+const TEAM_ROLES: { key: string; label: string }[] = [
+  { key: "page_admin", label: "Page Admin" },
+  { key: "content", label: "Content" },
+  { key: "manager", label: "Manager" },
+  { key: "design", label: "Design" },
+  { key: "video_editing", label: "Video Editing" },
+];
 const PRICING_FIELDS = ["post", "reel", "story", "collab", "carousel", "newsletter", "video"];
 
 const CATEGORIES = [...CONTENT_CATEGORIES];
@@ -55,9 +64,11 @@ interface FormState {
   metrics: Record<string, string>;
   cadence: Record<string, string>;
   pricing: Record<string, string>;
+  team: Record<string, string>;
+  is_active: boolean;
   notes: string;
 }
-const EMPTY_FORM: FormState = { name: "", category: "", links: {}, metrics: {}, cadence: {}, pricing: {}, notes: "" };
+const EMPTY_FORM: FormState = { name: "", category: "", links: {}, metrics: {}, cadence: {}, pricing: {}, team: {}, is_active: true, notes: "" };
 
 function fmtNum(n?: number) {
   if (!n) return "—";
@@ -67,7 +78,8 @@ function fmtNum(n?: number) {
 }
 function fmtPrice(n?: number) { return n ? `₹${n.toLocaleString("en-IN")}` : null; }
 
-export default function OwnedMediaClient() {
+export default function OwnedMediaClient({ members = [] }: { members?: { id: string; full_name: string }[] }) {
+  const [tab, setTab] = useState<"properties" | "cadence" | "team">("properties");
   const [props, setProps] = useState<OwnedMediaProperty[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -99,7 +111,7 @@ export default function OwnedMediaClient() {
     finally { setScanning(false); }
   }
 
-  function openNew() { setForm({ ...EMPTY_FORM, links: {}, metrics: {}, cadence: {}, pricing: {} }); setShowForm(true); }
+  function openNew() { setForm({ ...EMPTY_FORM, links: {}, metrics: {}, cadence: {}, pricing: {}, team: {} }); setShowForm(true); }
   function openEdit(p: OwnedMediaProperty) {
     setForm({
       id: p.id,
@@ -109,6 +121,8 @@ export default function OwnedMediaClient() {
       metrics: Object.fromEntries(Object.entries(p.metrics || {}).map(([k, v]) => [k, v ? String(v) : ""])),
       cadence: Object.fromEntries(Object.entries(p.cadence || {}).map(([k, v]) => [k, v ? String(v) : ""])),
       pricing: Object.fromEntries(Object.entries(p.pricing || {}).map(([k, v]) => [k, v ? String(v) : ""])),
+      team: Object.fromEntries(Object.entries(p.team || {}).map(([k, v]) => [k, String(v || "")])),
+      is_active: p.is_active !== false,
       notes: p.notes || "",
     });
     setShowForm(true);
@@ -133,6 +147,8 @@ export default function OwnedMediaClient() {
         metrics: numRecord(form.metrics),
         cadence: numRecord(form.cadence),
         pricing: numRecord(form.pricing),
+        team: Object.fromEntries(Object.entries(form.team).filter(([, v]) => v)),
+        is_active: form.is_active,
         notes: form.notes,
       }),
     });
@@ -147,6 +163,25 @@ export default function OwnedMediaClient() {
     if (!confirm(`Delete "${p.name}"? (Its Distro Hub entries stay — remove them there if needed.)`)) return;
     await fetch("/api/owned-media", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: p.id }) });
     setProps(prev => prev.filter(x => x.id !== p.id));
+  }
+
+  async function toggleActive(p: OwnedMediaProperty) {
+    const next = !(p.is_active !== false);
+    setProps(prev => prev.map(x => x.id === p.id ? { ...x, is_active: next } : x));
+    const res = await fetch("/api/owned-media", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: p.id, name: p.name, category: p.category, links: p.links, metrics: p.metrics, cadence: p.cadence, pricing: p.pricing, team: p.team || {}, is_active: next, notes: p.notes }),
+    });
+    const json = await res.json();
+    if (json.error) {
+      setProps(prev => prev.map(x => x.id === p.id ? { ...x, is_active: !next } : x));
+      setError(json.error);
+    }
+  }
+
+  function memberName(id?: string) {
+    return members.find(m => m.id === id)?.full_name || "";
   }
 
   const lastScan = props.map(p => p.metrics_updated_at).filter(Boolean).sort().reverse()[0];
@@ -181,6 +216,20 @@ export default function OwnedMediaClient() {
           </div>
         </div>
         {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
+
+        {/* Tabs */}
+        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit mt-4">
+          {([
+            { id: "properties", label: "Properties", Icon: LayoutGrid },
+            { id: "cadence", label: "Cadence / Week", Icon: CalendarDays },
+            { id: "team", label: "Team Allocated", Icon: Users },
+          ] as const).map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${tab === t.id ? "bg-white shadow text-orange-700" : "text-slate-500 hover:text-slate-700"}`}>
+              <t.Icon className="w-3.5 h-3.5" /> {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Table */}
@@ -193,7 +242,7 @@ export default function OwnedMediaClient() {
             <p className="text-sm font-medium">No owned media properties yet</p>
             <p className="text-xs mt-1">Add your in-house pages, channels and newsletters to track and monetise them.</p>
           </div>
-        ) : (
+        ) : tab === "properties" ? (
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[1000px]">
@@ -207,14 +256,14 @@ export default function OwnedMediaClient() {
                         {p.label}
                       </th>
                     ))}
-                    <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Cadence /wk</th>
                     <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Pricing</th>
+                    <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Active</th>
                     <th className="w-20" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {props.map(p => (
-                    <tr key={p.id} className="hover:bg-slate-50/50 group">
+                    <tr key={p.id} className={`hover:bg-slate-50/50 group ${p.is_active === false ? "opacity-50" : ""}`}>
                       <td className="px-4 py-3 sticky left-0 bg-white group-hover:bg-slate-50/50">
                         <p className="font-semibold text-slate-900">{p.name}</p>
                         {p.notes && <p className="text-xs text-slate-400 truncate max-w-[160px]">{p.notes}</p>}
@@ -246,16 +295,6 @@ export default function OwnedMediaClient() {
                         </td>
                       ))}
                       <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1 max-w-[150px]">
-                          {CADENCE_FIELDS.filter(f => p.cadence?.[f]).map(f => (
-                            <span key={f} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                              {p.cadence[f]} {f}
-                            </span>
-                          ))}
-                          {!CADENCE_FIELDS.some(f => p.cadence?.[f]) && <span className="text-slate-300 text-xs">—</span>}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-1 max-w-[180px]">
                           {PRICING_FIELDS.filter(f => p.pricing?.[f]).map(f => (
                             <span key={f} className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-full whitespace-nowrap capitalize">
@@ -264,6 +303,12 @@ export default function OwnedMediaClient() {
                           ))}
                           {!PRICING_FIELDS.some(f => p.pricing?.[f]) && <span className="text-slate-300 text-xs">—</span>}
                         </div>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <button onClick={() => toggleActive(p)} title={p.is_active !== false ? "Active — click to deactivate" : "Inactive — click to activate"}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${p.is_active !== false ? "bg-emerald-500" : "bg-slate-300"}`}>
+                          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${p.is_active !== false ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
+                        </button>
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex gap-1 justify-end">
@@ -275,6 +320,87 @@ export default function OwnedMediaClient() {
                           </button>
                         </div>
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : tab === "cadence" ? (
+          /* ── Cadence per week ── */
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-900">Cadence per Week</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Content pieces committed per week on each property — edit via the property</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[760px]">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Property</th>
+                    {CADENCE_FIELDS.map(f => (
+                      <th key={f} className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase capitalize">{f}</th>
+                    ))}
+                    <th className="text-center px-4 py-3 text-xs font-semibold text-orange-600 uppercase">Total /wk</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {props.map(p => {
+                    const total = CADENCE_FIELDS.reduce((s2, f) => s2 + (Number(p.cadence?.[f]) || 0), 0);
+                    return (
+                      <tr key={p.id} className={`hover:bg-slate-50/50 ${p.is_active === false ? "opacity-50" : ""}`}>
+                        <td className="px-4 py-3 font-semibold text-slate-900">{p.name}</td>
+                        {CADENCE_FIELDS.map(f => (
+                          <td key={f} className="px-3 py-3 text-center">
+                            {p.cadence?.[f]
+                              ? <span className="inline-block min-w-[28px] text-sm font-bold text-slate-700 bg-slate-100 rounded-lg px-2 py-0.5">{p.cadence[f]}</span>
+                              : <span className="text-slate-200">·</span>}
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 text-center font-bold text-orange-700">{total || "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          /* ── Team allocated ── */
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-900">Team Allocated</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Who runs what — set while adding or editing a property</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[820px]">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Property</th>
+                    {TEAM_ROLES.map(r => (
+                      <th key={r.key} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase">{r.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {props.map(p => (
+                    <tr key={p.id} className={`hover:bg-slate-50/50 ${p.is_active === false ? "opacity-50" : ""}`}>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{p.name}</td>
+                      {TEAM_ROLES.map(r => {
+                        const name = memberName(p.team?.[r.key]);
+                        return (
+                          <td key={r.key} className="px-3 py-3">
+                            {name ? (
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                  {name.charAt(0).toUpperCase()}
+                                </span>
+                                <span className="text-xs text-slate-700">{name}</span>
+                              </span>
+                            ) : <span className="text-slate-300 text-xs">—</span>}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -377,6 +503,36 @@ export default function OwnedMediaClient() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Team allocation */}
+              <div>
+                <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1">Team Allocated <span className="font-normal normal-case text-slate-400">(shows in the Team tab)</span></p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {TEAM_ROLES.map(r => (
+                    <div key={r.key}>
+                      <label className="block text-xs text-slate-500 mb-0.5">{r.label}</label>
+                      <select value={form.team[r.key] || ""}
+                        onChange={e => setForm(f => ({ ...f, team: { ...f.team, [r.key]: e.target.value } }))}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-orange-400">
+                        <option value="">Unassigned</option>
+                        {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Active toggle */}
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">Property Active</p>
+                  <p className="text-xs text-slate-400">Inactive properties are dimmed and marked inactive in the Distro Hub</p>
+                </div>
+                <button type="button" onClick={() => setForm(f => ({ ...f, is_active: !f.is_active }))}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.is_active ? "bg-emerald-500" : "bg-slate-300"}`}>
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.is_active ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
               </div>
 
               {/* Notes */}

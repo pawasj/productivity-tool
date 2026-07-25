@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const month = req.nextUrl.searchParams.get("month") || "";
 
   const svc = createServiceRoleClient();
-  const [leadsRes, expensesRes, salaryRes] = await Promise.all([
+  const [leadsRes, expensesRes, salaryRes, retainersRes] = await Promise.all([
     svc
       .from("leads")
       .select("*, vertical:verticals(name,color), our_poc:profiles!leads_our_poc_id_fkey(full_name)")
@@ -23,6 +23,12 @@ export async function GET(req: NextRequest) {
     month
       ? svc.from("salary_entries").select("amount, member_type, vertical_id").eq("month", month)
       : Promise.resolve({ data: [], error: null }),
+    // Active retainer clients recur every month unless closed/inactive
+    svc
+      .from("clients")
+      .select("id, name, monthly_value, vertical_id, status, engagement_type, vertical:verticals(name,color)")
+      .eq("engagement_type", "retainer")
+      .eq("status", "active"),
   ]);
 
   const salaryEntries = (salaryRes.data || []) as { amount: number; member_type: string; vertical_id?: string }[];
@@ -33,5 +39,6 @@ export async function GET(req: NextRequest) {
     expenses: expensesRes.data || [],
     salaryEntries,
     salaryTotal,
+    retainerClients: retainersRes.data || [],
   });
 }

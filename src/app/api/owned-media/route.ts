@@ -39,7 +39,7 @@ async function syncToDistro(prop: OwnedMediaProperty) {
       notes: `Owned media property — synced from Owned Media panel`,
       influencer_type: "page",   // owned properties live in Community Pages, not Creators
       is_owned: true,
-      is_active: true,
+      is_active: prop.is_active !== false,
       updated_at: new Date().toISOString(),
     };
 
@@ -80,6 +80,8 @@ export async function POST(req: NextRequest) {
     metrics: body.metrics || {},
     cadence: body.cadence || {},
     pricing: body.pricing || {},
+    team: body.team || {},
+    is_active: body.is_active !== false,
     notes: body.notes || null,
     updated_at: new Date().toISOString(),
   };

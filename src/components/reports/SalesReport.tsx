@@ -21,6 +21,7 @@ export default function SalesReport({ verticals }: Props) {
   const now = new Date();
   const [month, setMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [retainerClients, setRetainerClients] = useState<Array<{ id: string; name: string; monthly_value?: number; vertical?: { name: string; color: string } }>>([]);
   const [loading, setLoading] = useState(false);
   const [exportingSheet, setExportingSheet] = useState(false);
   const [exportError, setExportError] = useState("");
@@ -31,6 +32,7 @@ export default function SalesReport({ verticals }: Props) {
     const res = await fetch("/api/reports/summary");
     const json = await res.json();
     setLeads((json.leads || []) as Lead[]);
+    setRetainerClients(json.retainerClients || []);
     setLoading(false);
   }, []);
 
@@ -53,9 +55,11 @@ export default function SalesReport({ verticals }: Props) {
   const monthLeads = leads.filter(l => leadMonth(l) === month);
   const retainerLeads = monthLeads.filter(l => l.engagement_type === "retainer");
   const onetimeLeads = monthLeads.filter(l => l.engagement_type !== "retainer");
+  // Active retainers from Client Details recur every month (unless closed/inactive)
+  const retainerMRRFromClients = retainerClients.reduce((s, c) => s + (c.monthly_value || 0), 0);
   const totalRevenue = onetimeLeads.reduce((s, l) => s + (l.deal_value || 0), 0)
-    + retainerLeads.reduce((s, l) => s + (l.monthly_value || 0), 0);
-  const totalMRR = retainerLeads.reduce((s, l) => s + (l.monthly_value || 0), 0);
+    + retainerMRRFromClients;
+  const totalMRR = retainerMRRFromClients;
 
   // Vertical breakdown
   const verticalMap = new Map<string, { name: string; color: string; revenue: number; count: number }>();
@@ -147,8 +151,8 @@ export default function SalesReport({ verticals }: Props) {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {[
               { label: "Total Revenue", value: fmt(totalRevenue), sub: monthLabel, color: "bg-emerald-600" },
-              { label: "Approved Deals", value: monthLeads.length, sub: `${onetimeLeads.length} one-time · ${retainerLeads.length} retainer`, color: "bg-blue-600" },
-              { label: "MRR", value: fmt(totalMRR), sub: "Recurring revenue", color: "bg-amber-500" },
+              { label: "Approved Deals", value: monthLeads.length, sub: `${onetimeLeads.length} one-time · ${retainerClients.length} retainers`, color: "bg-blue-600" },
+              { label: "MRR", value: fmt(totalMRR), sub: `${retainerClients.length} active retainers (Client Details)`, color: "bg-amber-500" },
               { label: "Avg Deal Size", value: fmt(monthLeads.length ? Math.round(totalRevenue / monthLeads.length) : 0), sub: "Per client", color: "bg-violet-600" },
             ].map(k => (
               <div key={k.label} className="bg-white rounded-2xl border border-slate-200 p-5">
@@ -220,6 +224,30 @@ export default function SalesReport({ verticals }: Props) {
               )}
             </div>
           </div>
+
+          {/* Active Retainers (recurring — from Client Details) */}
+          {retainerClients.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-900">Active Retainers — recur every month</h3>
+                <p className="text-sm text-amber-600 font-bold">{fmt(totalMRR)}/mo</p>
+              </div>
+              <table className="w-full text-sm">
+                <tbody className="divide-y divide-slate-50">
+                  {retainerClients.map(c => (
+                    <tr key={c.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-2.5 font-medium text-slate-800">{c.name}</td>
+                      <td className="px-4 py-2.5">
+                        {c.vertical ? <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: `${c.vertical.color}20`, color: c.vertical.color }}>{c.vertical.name}</span> : <span className="text-xs text-slate-300">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-bold text-amber-700">{fmt(c.monthly_value)}<span className="text-xs text-slate-400 font-normal">/mo</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="px-5 py-2 text-xs text-slate-400 border-t border-slate-50">Fetched from Client Details — mark a client inactive/churned there to exclude it.</p>
+            </div>
+          )}
 
           {/* Deal Table */}
           {monthLeads.length > 0 && (

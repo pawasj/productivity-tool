@@ -233,3 +233,30 @@ alter table friends_of_bcc enable row level security;
 drop policy if exists "friends_all" on friends_of_bcc;
 create policy "friends_all" on friends_of_bcc
   for all to authenticated using (true) with check (true);
+
+-- ─── Owned Media: team allocation + active toggle ────────────────────────────
+alter table owned_media_properties add column if not exists is_active boolean not null default true;
+alter table owned_media_properties add column if not exists team jsonb not null default '{}'::jsonb;
+
+-- ─── Owned Media Sales pipeline ──────────────────────────────────────────────
+create table if not exists owned_media_leads (
+  id uuid primary key default gen_random_uuid(),
+  company_name text not null,
+  contact_name text,
+  contact_email text,
+  contact_phone text,
+  property_id uuid references owned_media_properties(id) on delete set null,
+  property_name text,
+  lead_type text not null default 'inbound',
+  status text not null default 'draft',
+  deal_value numeric(14,2),
+  notes text,
+  next_follow_up date,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table owned_media_leads enable row level security;
+drop policy if exists "oml_all" on owned_media_leads;
+create policy "oml_all" on owned_media_leads
+  for all to authenticated using (true) with check (true);

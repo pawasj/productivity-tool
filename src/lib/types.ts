@@ -20,6 +20,7 @@ export const ALL_MODULES = [
   "research_hub",
   "vendor_management",
   "owned_media",
+  "owned_media_sales",
   "todos",
   "idea_dump",
   "friends_of_bcc",
@@ -41,6 +42,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   research_hub: "Research Hub",
   vendor_management: "Vendor Management",
   owned_media: "Owned Media",
+  owned_media_sales: "Owned Media Sales",
   todos: "To-Dos",
   idea_dump: "Idea Dump",
   friends_of_bcc: "Friends of BCC",
@@ -61,6 +63,7 @@ export const MODULE_ROUTES: Record<AppModule, string> = {
   research_hub: "/dashboard/research",
   vendor_management: "/dashboard/vendors",
   owned_media: "/dashboard/owned-media",
+  owned_media_sales: "/dashboard/owned-media-sales",
   todos: "/dashboard/todos",
   idea_dump: "/dashboard/ideas",
   friends_of_bcc: "/dashboard/friends",
@@ -86,6 +89,8 @@ export interface OwnedMediaProperty {
   metrics_updated_at?: string;
   cadence: Record<string, number>;   // e.g. { posts: 5, reels: 3, carousels: 2, articles: 1, newsletters: 1, videos: 2 } per week
   pricing: Record<string, number>;   // e.g. { post: 5000, reel: 8000, story: 2000, collab: 10000, carousel: 6000, newsletter: 15000, video: 20000 }
+  team?: Record<string, string>;     // role -> profile id: { page_admin, content, manager, design, video_editing }
+  is_active?: boolean;
   notes?: string;
   created_by?: string;
   created_at: string;
