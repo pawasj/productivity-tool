@@ -302,7 +302,8 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
               <table className="w-full text-sm min-w-[1000px]">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase sticky left-0 bg-slate-50">Property</th>
+                    <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase w-12">#</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase sticky left-12 bg-slate-50">Property</th>
                     <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Category</th>
                     <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Links</th>
                     {METRIC_PLATFORMS.map(p => (
@@ -316,9 +317,10 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {visibleProps.map(p => (
+                  {visibleProps.map((p, i) => (
                     <tr key={p.id} className={`hover:bg-slate-50/50 group ${p.is_active === false ? "opacity-50" : ""}`}>
-                      <td className="px-4 py-3 sticky left-0 bg-white group-hover:bg-slate-50/50">
+                      <td className="px-3 py-3 text-center text-xs font-semibold text-slate-400 tabular-nums">{i + 1}</td>
+                      <td className="px-4 py-3 sticky left-12 bg-white group-hover:bg-slate-50/50">
                         <p className="font-semibold text-slate-900">{p.name}</p>
                         {p.notes && <p className="text-xs text-slate-400 truncate max-w-[160px]">{p.notes}</p>}
                       </td>
@@ -394,6 +396,7 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
               <table className="w-full text-sm min-w-[760px]">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase w-12">#</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Property</th>
                     {CADENCE_FIELDS.map(f => (
                       <th key={f} className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase capitalize">{f}</th>
@@ -402,10 +405,11 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {visibleProps.map(p => {
+                  {visibleProps.map((p, i) => {
                     const total = CADENCE_FIELDS.reduce((s2, f) => s2 + (Number(p.cadence?.[f]) || 0), 0);
                     return (
                       <tr key={p.id} className={`hover:bg-slate-50/50 ${p.is_active === false ? "opacity-50" : ""}`}>
+                        <td className="px-3 py-3 text-center text-xs font-semibold text-slate-400 tabular-nums">{i + 1}</td>
                         <td className="px-4 py-3 font-semibold text-slate-900">{p.name}</td>
                         {CADENCE_FIELDS.map(f => (
                           <td key={f} className="px-3 py-3 text-center">
@@ -433,6 +437,7 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
               <table className="w-full text-sm min-w-[820px]">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase align-top w-12">#</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase align-top">Property</th>
                     {TEAM_ROLES.map(r => {
                       // Only offer members actually allocated to this role
@@ -453,10 +458,11 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {visibleProps.length === 0 && (
-                    <tr><td colSpan={TEAM_ROLES.length + 1} className="px-4 py-10 text-center text-sm text-slate-400">No properties match these filters</td></tr>
+                    <tr><td colSpan={TEAM_ROLES.length + 2} className="px-4 py-10 text-center text-sm text-slate-400">No properties match these filters</td></tr>
                   )}
-                  {visibleProps.map(p => (
+                  {visibleProps.map((p, i) => (
                     <tr key={p.id} className={`hover:bg-slate-50/50 ${p.is_active === false ? "opacity-50" : ""}`}>
+                      <td className="px-3 py-3 text-center text-xs font-semibold text-slate-400 tabular-nums">{i + 1}</td>
                       <td className="px-4 py-3 font-semibold text-slate-900">{p.name}</td>
                       {TEAM_ROLES.map(r => {
                         const name = memberName(p.team?.[r.key]);
