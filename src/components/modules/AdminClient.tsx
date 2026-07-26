@@ -121,6 +121,20 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
     setMembers(members.filter(m => m.id !== member.id));
   }
 
+  async function changeEmail(member: Profile) {
+    const next = prompt(`New email for ${member.full_name}:`, member.email);
+    if (!next || next.trim().toLowerCase() === member.email.toLowerCase()) return;
+    const res = await fetch("/api/admin/update-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: member.id, email: next.trim() }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) { alert(json.error || "Failed to update email"); return; }
+    setMembers(members.map(m => m.id === member.id ? { ...m, email: json.email } : m));
+    setMessage({ type: "success", text: `${member.full_name} can now log in with ${json.email}.` });
+  }
+
   async function openMemberProfile(member: Profile) {
     setViewingMember(member);
     setMemberData(null);
@@ -271,10 +285,12 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                     </div>
                   </td>
                   <td className="px-5 py-3">
-                    <div className="flex items-center gap-1.5 text-sm text-slate-600">
+                    <button onClick={() => changeEmail(member)} title="Click to change this user's login email"
+                      className="flex items-center gap-1.5 text-sm text-slate-600 hover:text-indigo-600 group/email">
                       <Mail className="w-3.5 h-3.5 text-slate-400" />
                       {member.email}
-                    </div>
+                      <Settings className="w-3 h-3 text-slate-300 opacity-0 group-hover/email:opacity-100 transition-opacity" />
+                    </button>
                   </td>
                   <td className="px-5 py-3">
                     <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
