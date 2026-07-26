@@ -84,6 +84,7 @@ export interface OwnedMediaProperty {
   id: string;
   name: string;
   category?: string;
+  country?: string;
   links: Partial<Record<OwnedMediaPlatform, string>>;
   metrics: Partial<Record<OwnedMediaPlatform, number>>;   // followers / subscribers / members
   metrics_updated_at?: string;

@@ -30,6 +30,7 @@ async function syncToDistro(prop: OwnedMediaProperty) {
       channel_link: link,
       platform,
       category: prop.category || "Owned Media",
+      location: prop.country || null,
       followers: prop.metrics?.[key] || null,
       rate_post: pricing.post || null,
       rate_reel: pricing.reel || null,
@@ -76,6 +77,7 @@ export async function POST(req: NextRequest) {
   const payload = {
     name: body.name.trim(),
     category: body.category || null,
+    country: body.country || null,
     links: body.links || {},
     metrics: body.metrics || {},
     cadence: body.cadence || {},

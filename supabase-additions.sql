@@ -260,3 +260,6 @@ alter table owned_media_leads enable row level security;
 drop policy if exists "oml_all" on owned_media_leads;
 create policy "oml_all" on owned_media_leads
   for all to authenticated using (true) with check (true);
+
+-- ─── Owned Media: country ────────────────────────────────────────────────────
+alter table owned_media_properties add column if not exists country text;

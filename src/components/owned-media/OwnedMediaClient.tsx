@@ -56,10 +56,17 @@ const PRICING_FIELDS = ["post", "reel", "story", "collab", "carousel", "newslett
 
 const CATEGORIES = [...CONTENT_CATEGORIES];
 
+const COUNTRIES = [
+  "India", "USA", "UK", "UAE", "Canada", "Australia", "Singapore",
+  "Germany", "France", "Netherlands", "Saudi Arabia", "Indonesia",
+  "Philippines", "Global", "Other",
+];
+
 interface FormState {
   id?: string;
   name: string;
   category: string;
+  country: string;
   links: Record<string, string>;
   metrics: Record<string, string>;
   cadence: Record<string, string>;
@@ -68,7 +75,7 @@ interface FormState {
   is_active: boolean;
   notes: string;
 }
-const EMPTY_FORM: FormState = { name: "", category: "", links: {}, metrics: {}, cadence: {}, pricing: {}, team: {}, is_active: true, notes: "" };
+const EMPTY_FORM: FormState = { name: "", category: "", country: "", links: {}, metrics: {}, cadence: {}, pricing: {}, team: {}, is_active: true, notes: "" };
 
 function fmtNum(n?: number) {
   if (!n) return "—";
@@ -80,6 +87,7 @@ function fmtPrice(n?: number) { return n ? `₹${n.toLocaleString("en-IN")}` : n
 
 export default function OwnedMediaClient({ members = [] }: { members?: { id: string; full_name: string }[] }) {
   const [tab, setTab] = useState<"properties" | "cadence" | "team">("properties");
+  const [countryFilter, setCountryFilter] = useState("");
   const [props, setProps] = useState<OwnedMediaProperty[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -117,6 +125,7 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
       id: p.id,
       name: p.name,
       category: p.category || "",
+      country: p.country || "",
       links: Object.fromEntries(Object.entries(p.links || {}).map(([k, v]) => [k, String(v || "")])),
       metrics: Object.fromEntries(Object.entries(p.metrics || {}).map(([k, v]) => [k, v ? String(v) : ""])),
       cadence: Object.fromEntries(Object.entries(p.cadence || {}).map(([k, v]) => [k, v ? String(v) : ""])),
@@ -143,6 +152,7 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
         id: form.id,
         name: form.name,
         category: form.category,
+        country: form.country,
         links: linkRecord,
         metrics: numRecord(form.metrics),
         cadence: numRecord(form.cadence),
@@ -171,7 +181,7 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
     const res = await fetch("/api/owned-media", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: p.id, name: p.name, category: p.category, links: p.links, metrics: p.metrics, cadence: p.cadence, pricing: p.pricing, team: p.team || {}, is_active: next, notes: p.notes }),
+      body: JSON.stringify({ id: p.id, name: p.name, category: p.category, country: p.country, links: p.links, metrics: p.metrics, cadence: p.cadence, pricing: p.pricing, team: p.team || {}, is_active: next, notes: p.notes }),
     });
     const json = await res.json();
     if (json.error) {
@@ -183,6 +193,11 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
   function memberName(id?: string) {
     return members.find(m => m.id === id)?.full_name || "";
   }
+
+  const countries = Array.from(new Set(props.map(p => (p.country || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  const visibleProps = countryFilter
+    ? props.filter(p => (p.country || "").trim().toLowerCase() === countryFilter.toLowerCase())
+    : props;
 
   const lastScan = props.map(p => p.metrics_updated_at).filter(Boolean).sort().reverse()[0];
 
@@ -217,8 +232,9 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
         </div>
         {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
 
-        {/* Tabs */}
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit mt-4">
+        {/* Tabs + country filter */}
+        <div className="flex items-center gap-3 flex-wrap mt-4">
+        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit">
           {([
             { id: "properties", label: "Properties", Icon: LayoutGrid },
             { id: "cadence", label: "Cadence / Week", Icon: CalendarDays },
@@ -229,6 +245,14 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
               <t.Icon className="w-3.5 h-3.5" /> {t.label}
             </button>
           ))}
+        </div>
+        {countries.length > 0 && (
+          <select value={countryFilter} onChange={e => setCountryFilter(e.target.value)}
+            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600">
+            <option value="">All Countries</option>
+            {countries.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
         </div>
       </div>
 
@@ -262,16 +286,19 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {props.map(p => (
+                  {visibleProps.map(p => (
                     <tr key={p.id} className={`hover:bg-slate-50/50 group ${p.is_active === false ? "opacity-50" : ""}`}>
                       <td className="px-4 py-3 sticky left-0 bg-white group-hover:bg-slate-50/50">
                         <p className="font-semibold text-slate-900">{p.name}</p>
                         {p.notes && <p className="text-xs text-slate-400 truncate max-w-[160px]">{p.notes}</p>}
                       </td>
                       <td className="px-3 py-3">
-                        {p.category
-                          ? <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">{p.category}</span>
-                          : <span className="text-slate-300 text-xs">—</span>}
+                        <div className="flex flex-col gap-1">
+                          {p.category
+                            ? <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap w-fit">{p.category}</span>
+                            : <span className="text-slate-300 text-xs">—</span>}
+                          {p.country && <span className="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap w-fit">🌍 {p.country}</span>}
+                        </div>
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-1.5">
@@ -345,7 +372,7 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {props.map(p => {
+                  {visibleProps.map(p => {
                     const total = CADENCE_FIELDS.reduce((s2, f) => s2 + (Number(p.cadence?.[f]) || 0), 0);
                     return (
                       <tr key={p.id} className={`hover:bg-slate-50/50 ${p.is_active === false ? "opacity-50" : ""}`}>
@@ -383,7 +410,7 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {props.map(p => (
+                  {visibleProps.map(p => (
                     <tr key={p.id} className={`hover:bg-slate-50/50 ${p.is_active === false ? "opacity-50" : ""}`}>
                       <td className="px-4 py-3 font-semibold text-slate-900">{p.name}</td>
                       {TEAM_ROLES.map(r => {
@@ -421,7 +448,7 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
 
             <div className="overflow-y-auto flex-1 p-6 space-y-5">
               {/* Basic */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">Property Name *</label>
                   <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -434,6 +461,14 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
                     <option value="">Select category…</option>
                     {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Country</label>
+                  <select value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+                    <option value="">Select country…</option>
+                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
