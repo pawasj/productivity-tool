@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Shield, UserPlus, Users, Mail, X, Check, Crown, User, Calendar, Link2, CheckCircle2, AlertCircle, Settings, Briefcase } from "lucide-react";
+import { Shield, UserPlus, Users, Mail, X, Check, Crown, User, Calendar, Link2, CheckCircle2, AlertCircle, Settings, Briefcase, Eye, Loader2, FileText } from "lucide-react";
 import type { Profile, AppModule } from "@/lib/types";
 import { ALL_MODULES, MODULE_LABELS } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
@@ -43,6 +43,10 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
 
   // Access level editor state (for existing members)
   const [editingAccess, setEditingAccess] = useState<Profile | null>(null);
+  // Full-profile viewer
+  const [viewingMember, setViewingMember] = useState<Profile | null>(null);
+  const [memberData, setMemberData] = useState<{ profile?: Record<string, unknown> | null; details?: Record<string, unknown> | null; bank?: Record<string, unknown> | null; documents?: Record<string, unknown>[]; leaves?: Record<string, unknown>[] } | null>(null);
+  const [loadingMember, setLoadingMember] = useState(false);
   const [editAccessLevels, setEditAccessLevels] = useState<AppModule[]>([]);
   const [savingAccess, setSavingAccess] = useState(false);
 
@@ -115,6 +119,18 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
     const json = await res.json();
     if (!res.ok || json.error) { alert(json.error || "Failed to remove user"); return; }
     setMembers(members.filter(m => m.id !== member.id));
+  }
+
+  async function openMemberProfile(member: Profile) {
+    setViewingMember(member);
+    setMemberData(null);
+    setLoadingMember(true);
+    try {
+      const res = await fetch(`/api/admin/member-profile?user_id=${member.id}`);
+      const json = await res.json();
+      if (json.error) alert(json.error);
+      else setMemberData(json);
+    } finally { setLoadingMember(false); }
   }
 
   return (
@@ -271,6 +287,13 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                   <td className="px-5 py-3 text-sm text-slate-400">{formatDate(member.created_at)}</td>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openMemberProfile(member)}
+                        className="text-xs text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                        title="View everything this member has filled in"
+                      >
+                        <Eye className="w-3 h-3" /> Profile
+                      </button>
                       <button
                         onClick={() => { setEditingAccess(member); setEditAccessLevels(member.access_levels || []); }}
                         className="text-xs text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
@@ -454,6 +477,121 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                   {savingAccess ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> : <Check className="w-3.5 h-3.5" />}
                   Save Access
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Member full-profile viewer */}
+        {viewingMember && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">
+                    {viewingMember.full_name?.charAt(0)?.toUpperCase()}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-900">{viewingMember.full_name}</h3>
+                    <p className="text-xs text-slate-400">{viewingMember.email}</p>
+                  </div>
+                </div>
+                <button onClick={() => setViewingMember(null)}><X className="w-4 h-4 text-slate-400" /></button>
+              </div>
+
+              <div className="overflow-y-auto flex-1 p-6 space-y-5 text-sm">
+                {loadingMember ? (
+                  <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-emerald-400" /></div>
+                ) : memberData && (() => {
+                  const s2 = (v: unknown) => (v == null || v === "" ? "—" : String(v));
+                  const prof = (memberData.profile || {}) as Record<string, unknown>;
+                  const det = (memberData.details || {}) as Record<string, unknown>;
+                  const bank = (memberData.bank || {}) as Record<string, unknown>;
+                  const docs = (memberData.documents || []) as Record<string, unknown>[];
+                  const leaves = (memberData.leaves || []) as Record<string, unknown>[];
+                  const Field = ({ label, value }: { label: string; value: unknown }) => (
+                    <div><p className="text-xs text-slate-400">{label}</p><p className="text-slate-800 font-medium">{s2(value)}</p></div>
+                  );
+                  return (
+                    <>
+                      <section>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">💼 Work</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 rounded-xl p-4">
+                          <Field label="Designation" value={prof.designation} />
+                          <Field label="Department" value={prof.department} />
+                          <Field label="Employment Type" value={String(prof.employment_type || "").replace("_", " ")} />
+                          <Field label="Employee ID" value={prof.employee_id} />
+                          <Field label="Date of Joining" value={prof.date_of_joining} />
+                          <Field label="Phone" value={prof.phone} />
+                        </div>
+                      </section>
+
+                      <section>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">❤️ Personal</p>
+                        {memberData.details ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 rounded-xl p-4">
+                            <Field label="Personal Email" value={det.personal_email} />
+                            <Field label="Date of Birth" value={det.date_of_birth} />
+                            <Field label="Blood Group" value={det.blood_group} />
+                            <Field label="Emergency Contact" value={det.emergency_contact_name} />
+                            <Field label="Emergency Phone" value={det.emergency_contact_phone} />
+                            <Field label="City" value={det.permanent_city} />
+                            <div className="col-span-2 sm:col-span-3">
+                              <p className="text-xs text-slate-400">Permanent Address</p>
+                              <p className="text-slate-800 font-medium">{[det.permanent_address_line1, det.permanent_address_line2, det.permanent_city, det.permanent_state, det.permanent_pincode].filter(Boolean).join(", ") || "—"}</p>
+                            </div>
+                          </div>
+                        ) : <p className="text-xs text-slate-400 italic">Not filled in yet</p>}
+                      </section>
+
+                      <section>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">🏦 Bank & Payroll</p>
+                        {memberData.bank ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 rounded-xl p-4">
+                            <Field label="Account Holder" value={bank.account_holder_name} />
+                            <Field label="Bank" value={bank.bank_name} />
+                            <Field label="Account No." value={bank.account_number} />
+                            <Field label="IFSC" value={bank.ifsc_code} />
+                            <Field label="UPI ID" value={bank.upi_id} />
+                            <Field label="Account Type" value={bank.account_type} />
+                          </div>
+                        ) : <p className="text-xs text-slate-400 italic">Not filled in yet</p>}
+                      </section>
+
+                      <section>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">📄 Documents ({docs.length})</p>
+                        {docs.length === 0 ? <p className="text-xs text-slate-400 italic">No documents uploaded</p> : (
+                          <div className="space-y-1.5">
+                            {docs.map((d, i) => (
+                              <a key={i} href={String(d.file_url || "#")} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-2 p-2.5 bg-slate-50 hover:bg-indigo-50 rounded-lg text-slate-700 hover:text-indigo-700">
+                                <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                                <span className="font-medium capitalize">{String(d.doc_type || "").replace("_", " ")}</span>
+                                {Boolean(d.doc_label) && <span className="text-xs text-slate-400">· {String(d.doc_label)}</span>}
+                                {d.verified === true && <span className="ml-auto text-xs text-emerald-600 font-medium">✓ Verified</span>}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+
+                      <section>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">🌴 Recent Leaves ({leaves.length})</p>
+                        {leaves.length === 0 ? <p className="text-xs text-slate-400 italic">No leave applications</p> : (
+                          <div className="space-y-1">
+                            {leaves.slice(0, 8).map((l, i) => (
+                              <div key={i} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg text-xs">
+                                <span className="capitalize font-medium text-slate-700">{String(l.leave_type)} · {String(l.days)} day{Number(l.days) !== 1 ? "s" : ""}</span>
+                                <span className="text-slate-400">{String(l.from_date)} → {String(l.to_date)}</span>
+                                <span className={`px-2 py-0.5 rounded-full font-medium ${l.status === "approved" ? "bg-emerald-100 text-emerald-700" : l.status === "pending" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}>{String(l.status)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
