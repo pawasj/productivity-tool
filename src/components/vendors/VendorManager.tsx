@@ -146,7 +146,7 @@ export default function VendorManager({ currentUser }: Props) {
           </button>
           <button onClick={() => setActiveTab("intern")}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === "intern" ? "bg-teal-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}>
-            <GraduationCap className="w-4 h-4" /> Intern Army
+            <GraduationCap className="w-4 h-4" /> Intern Database
           </button>
         </div>
       </div>

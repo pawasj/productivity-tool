@@ -35,6 +35,7 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
   const [invitePassword, setInvitePassword] = useState("");
   const [inviteDept, setInviteDept] = useState("");
   const [inviteDesignation, setInviteDesignation] = useState("");
+  const [inviteEmploymentType, setInviteEmploymentType] = useState("full_time");
   const [inviteManager, setInviteManager] = useState("");
   const [inviteAccessLevels, setInviteAccessLevels] = useState<AppModule[]>([]);
   const [saving, setSaving] = useState(false);
@@ -74,6 +75,7 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
         role: inviteRole,
         department: inviteDept.trim() || null,
         designation: inviteDesignation.trim() || null,
+        employment_type: inviteEmploymentType,
         reporting_manager_id: inviteManager || null,
         access_levels: inviteAccessLevels,
       }),
@@ -94,7 +96,7 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
     setSaving(false);
     setShowInvite(false);
     setInviteEmail(""); setInviteName(""); setInvitePassword(""); setInviteRole("member");
-    setInviteDept(""); setInviteDesignation(""); setInviteManager(""); setInviteAccessLevels([]);
+    setInviteDept(""); setInviteDesignation(""); setInviteEmploymentType("full_time"); setInviteManager(""); setInviteAccessLevels([]);
   }
 
   async function toggleRole(member: Profile) {
@@ -351,6 +353,16 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                     <input value={inviteDesignation} onChange={e => setInviteDesignation(e.target.value)}
                       placeholder="e.g. Social Media Manager"
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Employment Type</label>
+                    <select value={inviteEmploymentType} onChange={e => setInviteEmploymentType(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                      <option value="full_time">Full-Time</option>
+                      <option value="intern">Intern</option>
+                      <option value="part_time">Part-Time</option>
+                      <option value="freelancer">Freelancer</option>
+                    </select>
                   </div>
                 </div>
                 <div>

@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, full_name, role, department, designation, reporting_manager_id, access_levels } = await req.json();
+    const { email, password, full_name, role, department, designation, employment_type, reporting_manager_id, access_levels } = await req.json();
 
     if (!email || !password || !full_name) {
       return NextResponse.json({ error: "email, password, and full_name are required" }, { status: 400 });
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       id: data.user.id, email, full_name, role: role || "member",
       department: department || null,
       designation: designation || null,
+      employment_type: employment_type || "full_time",
       locked_designation: designation || null,
       locked_department: department || null,
       locked_reporting_manager_id: reporting_manager_id || null,

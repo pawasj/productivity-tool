@@ -111,7 +111,7 @@ export interface Profile {
   reporting_manager_id?: string;
   employee_id?: string;
   date_of_joining?: string;
-  employment_type?: "full_time" | "part_time" | "contract" | "intern";
+  employment_type?: "full_time" | "part_time" | "contract" | "intern" | "freelancer";
   access_levels?: AppModule[];
   created_at: string;
   google_calendar_token?: Record<string, unknown>;
