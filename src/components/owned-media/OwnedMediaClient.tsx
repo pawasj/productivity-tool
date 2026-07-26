@@ -88,6 +88,8 @@ function fmtPrice(n?: number) { return n ? `₹${n.toLocaleString("en-IN")}` : n
 export default function OwnedMediaClient({ members = [] }: { members?: { id: string; full_name: string }[] }) {
   const [tab, setTab] = useState<"properties" | "cadence" | "team">("properties");
   const [countryFilter, setCountryFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [teamFilters, setTeamFilters] = useState<Record<string, string>>({});
   const [props, setProps] = useState<OwnedMediaProperty[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -195,10 +197,18 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
   }
 
   const countries = Array.from(new Set(props.map(p => (p.country || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-  const visibleProps = (countryFilter
-    ? props.filter(p => (p.country || "").trim().toLowerCase() === countryFilter.toLowerCase())
-    : props
-  ).slice().sort((a, b) => {
+  const usedCategories = Array.from(new Set(props.map(p => (p.category || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  const activeTeamFilters = Object.entries(teamFilters).filter(([, v]) => v);
+
+  const visibleProps = props.filter(p => {
+    if (countryFilter && (p.country || "").trim().toLowerCase() !== countryFilter.toLowerCase()) return false;
+    if (categoryFilter && (p.category || "").trim() !== categoryFilter) return false;
+    // Team tab: every chosen role must match that property's allocation
+    for (const [role, memberId] of activeTeamFilters) {
+      if ((p.team?.[role] || "") !== memberId) return false;
+    }
+    return true;
+  }).slice().sort((a, b) => {
     // Active properties always on top; re-sorts live when a toggle flips
     const aActive = a.is_active !== false ? 0 : 1;
     const bActive = b.is_active !== false ? 0 : 1;
@@ -253,12 +263,25 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
             </button>
           ))}
         </div>
+        {usedCategories.length > 0 && (
+          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
+            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600">
+            <option value="">All Categories</option>
+            {usedCategories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
         {countries.length > 0 && (
           <select value={countryFilter} onChange={e => setCountryFilter(e.target.value)}
             className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600">
             <option value="">All Countries</option>
             {countries.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+        )}
+        {(categoryFilter || countryFilter || activeTeamFilters.length > 0) && (
+          <button onClick={() => { setCategoryFilter(""); setCountryFilter(""); setTeamFilters({}); }}
+            className="text-xs text-slate-400 hover:text-slate-700 px-2 py-1.5">
+            Clear filters ({visibleProps.length}/{props.length})
+          </button>
         )}
         </div>
       </div>
@@ -410,20 +433,36 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
               <table className="w-full text-sm min-w-[820px]">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Property</th>
-                    {TEAM_ROLES.map(r => (
-                      <th key={r.key} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase">{r.label}</th>
-                    ))}
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase align-top">Property</th>
+                    {TEAM_ROLES.map(r => {
+                      // Only offer members actually allocated to this role
+                      const roleMembers = members.filter(m => props.some(p => p.team?.[r.key] === m.id));
+                      return (
+                        <th key={r.key} className="text-left px-3 py-3 align-top">
+                          <p className="text-xs font-semibold text-slate-500 uppercase mb-1.5">{r.label}</p>
+                          <select value={teamFilters[r.key] || ""}
+                            onChange={e => setTeamFilters(f => ({ ...f, [r.key]: e.target.value }))}
+                            className={`w-full px-2 py-1 border rounded-lg text-[11px] font-normal normal-case focus:outline-none focus:ring-1 focus:ring-orange-400 ${teamFilters[r.key] ? "border-orange-300 bg-orange-50 text-orange-700" : "border-slate-200 bg-white text-slate-500"}`}>
+                            <option value="">Anyone</option>
+                            {roleMembers.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                          </select>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
+                  {visibleProps.length === 0 && (
+                    <tr><td colSpan={TEAM_ROLES.length + 1} className="px-4 py-10 text-center text-sm text-slate-400">No properties match these filters</td></tr>
+                  )}
                   {visibleProps.map(p => (
                     <tr key={p.id} className={`hover:bg-slate-50/50 ${p.is_active === false ? "opacity-50" : ""}`}>
                       <td className="px-4 py-3 font-semibold text-slate-900">{p.name}</td>
                       {TEAM_ROLES.map(r => {
                         const name = memberName(p.team?.[r.key]);
+                        const isFiltered = !!teamFilters[r.key] && p.team?.[r.key] === teamFilters[r.key];
                         return (
-                          <td key={r.key} className="px-3 py-3">
+                          <td key={r.key} className={`px-3 py-3 ${isFiltered ? "bg-orange-50/60" : ""}`}>
                             {name ? (
                               <span className="flex items-center gap-1.5">
                                 <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-[10px] font-bold shrink-0">
