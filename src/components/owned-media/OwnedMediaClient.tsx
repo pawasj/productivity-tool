@@ -195,9 +195,16 @@ export default function OwnedMediaClient({ members = [] }: { members?: { id: str
   }
 
   const countries = Array.from(new Set(props.map(p => (p.country || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-  const visibleProps = countryFilter
+  const visibleProps = (countryFilter
     ? props.filter(p => (p.country || "").trim().toLowerCase() === countryFilter.toLowerCase())
-    : props;
+    : props
+  ).slice().sort((a, b) => {
+    // Active properties always on top; re-sorts live when a toggle flips
+    const aActive = a.is_active !== false ? 0 : 1;
+    const bActive = b.is_active !== false ? 0 : 1;
+    if (aActive !== bActive) return aActive - bActive;
+    return a.name.localeCompare(b.name);
+  });
 
   const lastScan = props.map(p => p.metrics_updated_at).filter(Boolean).sort().reverse()[0];
 
