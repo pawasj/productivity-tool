@@ -263,3 +263,6 @@ create policy "oml_all" on owned_media_leads
 
 -- ─── Owned Media: country ────────────────────────────────────────────────────
 alter table owned_media_properties add column if not exists country text;
+
+-- ─── Owned Media Sales: lead assignment ──────────────────────────────────────
+alter table owned_media_leads add column if not exists assigned_to uuid references profiles(id) on delete set null;

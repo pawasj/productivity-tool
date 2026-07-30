@@ -36,6 +36,7 @@ interface OMLead {
   deal_value?: number;
   notes?: string;
   next_follow_up?: string;
+  assigned_to?: string;
   created_by?: string;
   created_at: string;
 }
@@ -43,12 +44,13 @@ interface OMLead {
 interface Props {
   userId: string;
   properties: { id: string; name: string }[];
+  members: { id: string; full_name: string }[];
 }
 
 const EMPTY = {
   id: "", company_name: "", contact_name: "", contact_email: "", contact_phone: "",
   property_id: "", lead_type: "inbound" as "inbound" | "outbound",
-  status: "draft" as Status, deal_value: "", notes: "", next_follow_up: "",
+  status: "draft" as Status, deal_value: "", notes: "", next_follow_up: "", assigned_to: "",
 };
 
 function fmt(n?: number) {
@@ -59,7 +61,7 @@ function fmt(n?: number) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
-export default function OwnedMediaSalesClient({ userId, properties }: Props) {
+export default function OwnedMediaSalesClient({ userId, properties, members }: Props) {
   const [leads, setLeads] = useState<OMLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -72,6 +74,7 @@ export default function OwnedMediaSalesClient({ userId, properties }: Props) {
   const [filterProperty, setFilterProperty] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterMonth, setFilterMonth] = useState("");
+  const [filterAssignee, setFilterAssignee] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,6 +87,10 @@ export default function OwnedMediaSalesClient({ userId, properties }: Props) {
 
   function propName(id?: string) {
     return properties.find(p => p.id === id)?.name || "";
+  }
+
+  function memberName(id?: string) {
+    return members.find(m => m.id === id)?.full_name || "";
   }
 
   async function save() {
@@ -101,6 +108,7 @@ export default function OwnedMediaSalesClient({ userId, properties }: Props) {
       deal_value: form.deal_value ? parseFloat(form.deal_value) : null,
       notes: form.notes || null,
       next_follow_up: form.next_follow_up || null,
+      assigned_to: form.assigned_to || null,
       updated_at: new Date().toISOString(),
     };
     if (form.id) {
@@ -173,6 +181,7 @@ export default function OwnedMediaSalesClient({ userId, properties }: Props) {
       property_id: l.property_id || "", lead_type: l.lead_type || "inbound",
       status: l.status, deal_value: l.deal_value?.toString() || "",
       notes: l.notes || "", next_follow_up: l.next_follow_up ? l.next_follow_up.slice(0, 10) : "",
+      assigned_to: l.assigned_to || "",
     });
     setShowForm(true);
   }
@@ -184,6 +193,7 @@ export default function OwnedMediaSalesClient({ userId, properties }: Props) {
     if (filterProperty && l.property_id !== filterProperty) return false;
     if (filterType && l.lead_type !== filterType) return false;
     if (filterMonth && !String(l.created_at || "").startsWith(filterMonth)) return false;
+    if (filterAssignee && l.assigned_to !== filterAssignee) return false;
     return true;
   });
 
@@ -259,6 +269,11 @@ export default function OwnedMediaSalesClient({ userId, properties }: Props) {
             <option value="">All Platforms</option>
             {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
+          <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}
+            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600">
+            <option value="">All Assignees</option>
+            {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+          </select>
           <select value={filterType} onChange={e => setFilterType(e.target.value)}
             className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none text-slate-600">
             <option value="">Inbound & Outbound</option>
@@ -292,6 +307,7 @@ export default function OwnedMediaSalesClient({ userId, properties }: Props) {
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Company</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Type</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Platform</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Assigned To</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Status</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Value</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Added</th>
@@ -316,6 +332,16 @@ export default function OwnedMediaSalesClient({ userId, properties }: Props) {
                         {l.property_name
                           ? <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">{l.property_name}</span>
                           : <span className="text-xs text-slate-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        {l.assigned_to ? (
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                              {memberName(l.assigned_to).charAt(0).toUpperCase()}
+                            </span>
+                            <span className="text-xs text-slate-700">{memberName(l.assigned_to)}</span>
+                          </span>
+                        ) : <span className="text-xs text-slate-300">Unassigned</span>}
                       </td>
                       <td className="px-4 py-3">
                         <select value={l.status} onChange={e => updateStatus(l, e.target.value as Status)}
@@ -398,6 +424,14 @@ export default function OwnedMediaSalesClient({ userId, properties }: Props) {
                     className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
                     <option value="">Select platform…</option>
                     {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Assigned To</label>
+                  <select value={form.assigned_to} onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))}
+                    className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+                    <option value="">Unassigned</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
                   </select>
                 </div>
                 <div>

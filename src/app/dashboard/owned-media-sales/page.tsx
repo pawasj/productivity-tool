@@ -10,15 +10,16 @@ export default async function OwnedMediaSalesPage() {
   await requireAccess("owned_media_sales");
 
   const svc = createServiceRoleClient();
-  const { data: properties } = await svc
-    .from("owned_media_properties")
-    .select("id, name")
-    .order("name");
+  const [{ data: properties }, { data: members }] = await Promise.all([
+    svc.from("owned_media_properties").select("id, name").order("name"),
+    svc.from("profiles").select("id, full_name").order("full_name"),
+  ]);
 
   return (
     <OwnedMediaSalesClient
       userId={user.id}
       properties={(properties || []) as { id: string; name: string }[]}
+      members={(members || []) as { id: string; full_name: string }[]}
     />
   );
 }
