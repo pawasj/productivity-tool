@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase-server";
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,13 +21,16 @@ export async function POST(req: NextRequest) {
         user_id,
         type: "task_assigned",
         title: "New task assigned",
-        message: `${assignerName} assigned you a task: "${task_title}"`,
-        is_read: false,
+        body: `${assignerName} assigned you a task: "${task_title}"`,
+        link: "/dashboard/tasks",
+        read: false,
         created_at: new Date().toISOString(),
       }));
 
     if (notifications.length) {
-      await supabase.from("notifications").insert(notifications);
+      const svc = createServiceRoleClient();
+      const { error } = await svc.from("notifications").insert(notifications);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });

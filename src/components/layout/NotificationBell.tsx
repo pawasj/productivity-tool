@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Bell, Calendar, PhoneCall, TrendingUp, Check, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Bell, Calendar, PhoneCall, TrendingUp, Check, X, CheckSquare, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 interface Notif {
@@ -18,6 +19,10 @@ interface Notif {
 const TYPE_ICON: Record<string, React.ReactNode> = {
   meeting: <Calendar className="w-4 h-4 text-blue-500" />,
   followup: <PhoneCall className="w-4 h-4 text-amber-500" />,
+  follow_up: <PhoneCall className="w-4 h-4 text-amber-500" />,
+  deadline: <Clock className="w-4 h-4 text-rose-500" />,
+  task_assigned: <CheckSquare className="w-4 h-4 text-indigo-500" />,
+  poc_assigned: <TrendingUp className="w-4 h-4 text-violet-500" />,
   crm: <TrendingUp className="w-4 h-4 text-emerald-500" />,
   mention: <span className="text-sm font-bold text-indigo-500">@</span>,
   info: <Bell className="w-4 h-4 text-slate-400" />,
@@ -50,6 +55,7 @@ export default function NotificationBell() {
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const btnRef = useRef<HTMLButtonElement>(null);
   const supabase = createClient();
+  const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
@@ -171,6 +177,12 @@ export default function NotificationBell() {
       if (!liveIds.has(n.id)) all.push({ ...n as Notif, read: n.read || dismissed.has(n.id) });
     });
 
+    // Unread first, then newest first — new items always surface at the top
+    all.sort((a, b) => {
+      if (a.read !== b.read) return a.read ? 1 : -1;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
     setNotifs(all);
     setLoading(false);
   }, [supabase]);
@@ -190,6 +202,15 @@ export default function NotificationBell() {
     setReadIds(newIds);
     persistReadIds(newIds);
     setNotifs(n => n.map(x => x.id === id ? { ...x, read: true } : x));
+    // Persist for DB-backed rows (live/synthetic ids contain an underscore prefix)
+    if (!/^(meet|followup|crm)_/.test(id)) {
+      supabase.from("notifications").update({ read: true }).eq("id", id).then(() => {});
+    }
+  }
+
+  function openNotif(n: Notif) {
+    markRead(n.id);
+    if (n.link) { setOpen(false); router.push(n.link); }
   }
 
   function dismiss(id: string) {
@@ -208,7 +229,9 @@ export default function NotificationBell() {
       style={{ top: dropdownPos.top, left: dropdownPos.left, width: 320 }}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-        <span className="font-semibold text-sm text-slate-900">Notifications</span>
+        <span className="font-semibold text-sm text-slate-900">
+          Notifications{unread > 0 && <span className="ml-1.5 text-xs font-bold text-white bg-indigo-500 rounded-full px-1.5 py-0.5">{unread}</span>}
+        </span>
         {unread > 0 && (
           <button onClick={markAllRead} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
             Mark all read
@@ -225,22 +248,25 @@ export default function NotificationBell() {
           </div>
         )}
         {notifs.map(n => (
-          <div key={n.id} className={`flex gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${n.read ? "opacity-50" : ""}`}>
-            <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
+          <div key={n.id}
+            onClick={() => n.link && openNotif(n)}
+            className={`flex gap-3 px-4 py-3 transition-colors ${n.link ? "cursor-pointer" : ""} ${n.read ? "bg-white hover:bg-slate-50" : "bg-indigo-50/40 hover:bg-indigo-50"}`}>
+            {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 mt-2.5" />}
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${n.read ? "bg-slate-100" : "bg-white shadow-sm"}`}>
               {TYPE_ICON[n.type] || TYPE_ICON.info}
             </div>
             <div className="flex-1 min-w-0">
-              <p className={`text-sm ${n.read ? "text-slate-500" : "text-slate-800 font-medium"} truncate`}>{n.title}</p>
-              {n.body && <p className="text-xs text-slate-400 truncate">{n.body}</p>}
-              <p className="text-xs text-slate-300 mt-0.5">{timeAgo(n.created_at)}</p>
+              <p className={`text-sm ${n.read ? "text-slate-500" : "text-slate-900 font-semibold"} truncate`}>{n.title}</p>
+              {n.body && <p className="text-xs text-slate-500 line-clamp-2">{n.body.replace(/\s*\[(lead|brief|todo):[^\]]+\]$/, "")}</p>}
+              <p className="text-[11px] text-slate-400 mt-0.5">{timeAgo(n.created_at)}</p>
             </div>
             <div className="shrink-0 flex flex-col gap-0.5 mt-0.5">
               {!n.read && (
-                <button onClick={() => markRead(n.id)} title="Mark as read" className="p-1 hover:bg-indigo-100 rounded-lg transition-colors">
+                <button onClick={e => { e.stopPropagation(); markRead(n.id); }} title="Mark as read" className="p-1 hover:bg-indigo-100 rounded-lg transition-colors">
                   <Check className="w-3 h-3 text-indigo-500" />
                 </button>
               )}
-              <button onClick={() => dismiss(n.id)} title="Dismiss" className="p-1 hover:bg-slate-200 rounded-lg transition-colors">
+              <button onClick={e => { e.stopPropagation(); dismiss(n.id); }} title="Dismiss" className="p-1 hover:bg-slate-200 rounded-lg transition-colors">
                 <X className="w-3 h-3 text-slate-400" />
               </button>
             </div>

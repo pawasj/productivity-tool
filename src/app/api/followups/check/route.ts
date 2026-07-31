@@ -49,25 +49,35 @@ export async function POST() {
   // Dedup against already-sent reminders (ref stored in the message tail)
   const { data: existing } = await svc
     .from("notifications")
-    .select("message")
-    .eq("type", "follow_up")
+    .select("body")
+    .in("type", ["follow_up", "deadline"])
     .in("user_id", Array.from(new Set(candidates.map(c => c.user_id))));
   const sent = new Set((existing || []).map(n => {
-    const m = String((n as { message: string }).message).match(/\[(lead|brief|todo):[^\]]+\]$/);
+    const m = String((n as { body: string }).body).match(/\[(lead|brief|todo):[^\]]+\]$/);
     return m ? m[0] : "";
   }));
 
   const fresh = candidates.filter(c => !sent.has(`[${c.ref}]`));
   if (fresh.length === 0) return NextResponse.json({ created: 0 });
 
-  await svc.from("notifications").insert(fresh.map(c => ({
-    user_id: c.user_id,
-    type: "follow_up",
-    title: "Follow-up reminder",
-    message: `Follow up with ${c.name} — due ${new Date(c.due).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} [${c.ref}]`,
-    is_read: false,
-    created_at: new Date().toISOString(),
-  })));
+  await svc.from("notifications").insert(fresh.map(c => {
+    const kind = c.ref.split(":")[0];
+    const dueLabel = new Date(c.due).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+    const overdue = new Date(c.due) < new Date(new Date().toISOString().slice(0, 10));
+    return {
+      user_id: c.user_id,
+      type: kind === "todo" ? "deadline" : "follow_up",
+      title: kind === "todo"
+        ? (overdue ? "Task overdue" : "Task due today")
+        : (overdue ? "Follow-up overdue" : "Follow-up due today"),
+      body: kind === "todo"
+        ? `${c.name} — due ${dueLabel} [${c.ref}]`
+        : `Follow up with ${c.name} — due ${dueLabel} [${c.ref}]`,
+      link: kind === "todo" ? "/dashboard/todos" : kind === "brief" ? "/dashboard/distro" : "/dashboard/pipeline",
+      read: false,
+      created_at: new Date().toISOString(),
+    };
+  }));
 
   return NextResponse.json({ created: fresh.length });
 }
