@@ -266,3 +266,33 @@ alter table owned_media_properties add column if not exists country text;
 
 -- ─── Owned Media Sales: lead assignment ──────────────────────────────────────
 alter table owned_media_leads add column if not exists assigned_to uuid references profiles(id) on delete set null;
+
+-- ─── Jamming Board ───────────────────────────────────────────────────────────
+create table if not exists jam_boards (
+  id uuid primary key default gen_random_uuid(),
+  client_name text not null,
+  month text,
+  description text,
+  is_archived boolean not null default false,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table jam_boards enable row level security;
+drop policy if exists "jam_boards_all" on jam_boards;
+create policy "jam_boards_all" on jam_boards for all to authenticated using (true) with check (true);
+
+create table if not exists jam_notes (
+  id uuid primary key default gen_random_uuid(),
+  board_id uuid not null references jam_boards(id) on delete cascade,
+  content text not null,
+  color text not null default 'yellow',
+  author_id uuid references profiles(id) on delete set null,
+  author_name text,
+  likes jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table jam_notes enable row level security;
+drop policy if exists "jam_notes_all" on jam_notes;
+create policy "jam_notes_all" on jam_notes for all to authenticated using (true) with check (true);

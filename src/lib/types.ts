@@ -24,6 +24,7 @@ export const ALL_MODULES = [
   "todos",
   "idea_dump",
   "friends_of_bcc",
+  "jamming_board",
   "admin_access",
 ] as const;
 
@@ -46,6 +47,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   todos: "To-Dos",
   idea_dump: "Idea Dump",
   friends_of_bcc: "Friends of BCC",
+  jamming_board: "Jamming Board",
   admin_access: "Admin Panel",
 };
 
@@ -67,6 +69,7 @@ export const MODULE_ROUTES: Record<AppModule, string> = {
   todos: "/dashboard/todos",
   idea_dump: "/dashboard/ideas",
   friends_of_bcc: "/dashboard/friends",
+  jamming_board: "/dashboard/jamming",
   admin_access: "/dashboard/admin",
 };
 
