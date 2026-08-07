@@ -26,6 +26,8 @@ interface Offering {
 }
 
 interface ExtClient extends Client {
+  /** Paid out to creators / pages for placements — a direct cost of delivery */
+  distribution_payout?: number;
   poc_name?: string;
   poc_role?: string;
   poc_phone?: string;
@@ -49,7 +51,7 @@ const EMPTY: Omit<ExtClient, "id" | "created_at" | "updated_at" | "vertical"> = 
   contact_phone: "", contact_email: "", engagement_type: "one_time",
   amount: 0, monthly_value: 0, deliverables: "", vertical_id: "",
   status: "active", notes: "",
-  start_month: "", end_month: "",
+  start_month: "", end_month: "", distribution_payout: 0,
   poc_name: "", poc_role: "", poc_phone: "", poc_email: "",
   team_member_ids: [], offerings: [],
 };
@@ -154,6 +156,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
       status: c.status || "active", notes: c.notes || "",
       start_month: c.start_month || (c.created_at || "").slice(0, 7),
       end_month: c.end_month || "",
+      distribution_payout: c.distribution_payout || 0,
       poc_name: c.poc_name || "", poc_role: c.poc_role || "",
       poc_phone: c.poc_phone || "", poc_email: c.poc_email || "",
       team_member_ids: c.team_member_ids || [],
@@ -199,7 +202,11 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
       contact_name: form.contact_name, contact_phone: form.contact_phone, contact_email: form.contact_email,
       engagement_type: form.engagement_type,
       // Only admins may set/change client value — non-admin saves leave it untouched
-      ...(isAdmin ? { amount: Number(form.amount) || 0, monthly_value: Number(form.monthly_value) || 0 } : {}),
+      ...(isAdmin ? {
+        amount: Number(form.amount) || 0,
+        monthly_value: Number(form.monthly_value) || 0,
+        distribution_payout: Number(form.distribution_payout) || 0,
+      } : {}),
       deliverables: form.deliverables, vertical_id: form.vertical_id || null,
       status: form.status, notes: form.notes,
       start_month: form.start_month || thisMonth(),
@@ -262,9 +269,16 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
       }
     }
 
+    // Money paid straight out to creators / pages for placements
+    const distribution = c.distribution_payout || 0;
+    if (distribution > 0) {
+      totalCost += distribution;
+      breakdown.push({ service: "Distribution Payout", cost: distribution, note: "Creators / pages for placements" });
+    }
+
     const profit = revenue - totalCost;
     const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-    return { revenue, totalCost, profit, margin, breakdown };
+    return { revenue, totalCost, profit, margin, distribution, breakdown };
   }
 
   // Everything below is scoped to the selected month
@@ -518,6 +532,16 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
                         </p>
                       </div>
                     )}
+                    {isAdmin && (sc.distribution_payout || 0) > 0 && (
+                      <div>
+                        <p className="text-xs text-slate-400">Distribution Payout</p>
+                        <p className="font-semibold text-rose-600 mt-0.5">
+                          −{fmt(sc.distribution_payout || 0)}
+                          {sc.engagement_type === "retainer" && "/mo"}
+                        </p>
+                        <p className="text-[11px] text-slate-400">creators / pages</p>
+                      </div>
+                    )}
                     {sc.engagement_type === "retainer" && isAdmin && (
                       <div className="sm:col-span-3 pt-1">
                         {sc.end_month ? (
@@ -726,6 +750,18 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
                       <input type="number" onWheel={e => e.currentTarget.blur()} value={form.engagement_type === "retainer" ? (form.monthly_value || "") : (form.amount || "")}
                         onChange={e => sf(form.engagement_type === "retainer" ? "monthly_value" : "amount", e.target.value)}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                    </div>
+                  )}
+                  {isAdmin && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Distribution Payout (₹)</label>
+                      <input type="number" onWheel={e => e.currentTarget.blur()} value={form.distribution_payout || ""}
+                        onChange={e => sf("distribution_payout", e.target.value)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Paid to creators / pages for placements{form.engagement_type === "retainer" ? ", per month" : ""} — deducted from profit
+                      </p>
                     </div>
                   )}
                   <div>

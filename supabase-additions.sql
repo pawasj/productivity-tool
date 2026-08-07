@@ -367,3 +367,8 @@ alter table clients add column if not exists end_month text;
 update clients set start_month = to_char(created_at, 'YYYY-MM') where start_month is null;
 
 create index if not exists clients_start_month_idx on clients(start_month);
+
+-- ─── 11. Client Details: distribution payout ─────────────────────────────────
+-- Amount paid out to creators / pages for placements, deducted when
+-- calculating client-level profitability.
+alter table clients add column if not exists distribution_payout numeric not null default 0;
