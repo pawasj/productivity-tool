@@ -95,6 +95,7 @@ create table if not exists jam_boards (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+alter table jam_boards add column if not exists link text;
 alter table jam_boards enable row level security;
 drop policy if exists "jam_boards_all" on jam_boards;
 create policy "jam_boards_all" on jam_boards for all to authenticated using (true) with check (true);

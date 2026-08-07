@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import {
   Zap, Plus, X, Loader2, Trash2, Search, Sparkles, ThumbsUp, Archive,
-  ChevronLeft, ChevronRight, Pencil, Check,
+  ChevronLeft, ChevronRight, Pencil, Check, Link as LinkIcon, ExternalLink,
 } from "lucide-react";
 
 const supabase = createClient();
@@ -14,6 +14,7 @@ interface JamBoard {
   client_name: string;
   month?: string;
   description?: string;
+  link?: string;
   is_archived: boolean;
   created_by?: string;
   created_at: string;
@@ -49,6 +50,13 @@ function tiltOf(id: string) {
   return deg.toFixed(2);
 }
 
+// People paste "docs.google.com/..." as often as a full URL
+function normaliseLink(raw: string) {
+  const v = raw.trim();
+  if (!v) return null;
+  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+}
+
 const PROMPTS = [
   "What's the boldest idea nobody's said yet?",
   "If this brand were a person, what would they post today?",
@@ -71,7 +79,9 @@ export default function JammingBoardClient({ userId, userName, clientNames }: Pr
   const [notesLoading, setNotesLoading] = useState(false);
 
   const [showBoardForm, setShowBoardForm] = useState(false);
-  const [boardForm, setBoardForm] = useState({ client_name: "", month: "", description: "" });
+  const [boardForm, setBoardForm] = useState({ client_name: "", month: "", description: "", link: "" });
+  // Non-null while editing an existing board — the modal doubles as the editor
+  const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
   const [savingBoard, setSavingBoard] = useState(false);
 
   const [draft, setDraft] = useState("");
@@ -117,23 +127,57 @@ export default function JammingBoardClient({ userId, userName, clientNames }: Pr
     return () => { supabase.removeChannel(ch); };
   }, [activeBoardId, loadNotes]);
 
-  async function createBoard() {
+  function openNewBoard() {
+    setEditingBoardId(null);
+    setBoardForm({ client_name: "", month: "", description: "", link: "" });
+    setShowBoardForm(true);
+  }
+
+  function openEditBoard(board: JamBoard) {
+    setEditingBoardId(board.id);
+    setBoardForm({
+      client_name: board.client_name,
+      month: board.month || "",
+      description: board.description || "",
+      link: board.link || "",
+    });
+    setShowBoardForm(true);
+  }
+
+  function closeBoardForm() {
+    setShowBoardForm(false);
+    setEditingBoardId(null);
+    setBoardForm({ client_name: "", month: "", description: "", link: "" });
+  }
+
+  async function saveBoard() {
     if (!boardForm.client_name.trim()) return;
     setSavingBoard(true);
-    const { data, error } = await supabase.from("jam_boards").insert({
+    const payload = {
       client_name: boardForm.client_name.trim(),
       month: boardForm.month || null,
       description: boardForm.description || null,
-      created_by: userId,
-    }).select().single();
-    setSavingBoard(false);
-    if (error) { alert(`Couldn't create board: ${error.message}`); return; }
-    if (data) {
-      setBoards(prev => [data as JamBoard, ...prev]);
-      setActiveBoardId((data as JamBoard).id);
+      link: normaliseLink(boardForm.link),
+    };
+
+    if (editingBoardId) {
+      const { data, error } = await supabase.from("jam_boards")
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq("id", editingBoardId).select().single();
+      setSavingBoard(false);
+      if (error) { alert(`Couldn't save board: ${error.message}`); return; }
+      if (data) setBoards(prev => prev.map(b => b.id === editingBoardId ? data as JamBoard : b));
+    } else {
+      const { data, error } = await supabase.from("jam_boards")
+        .insert({ ...payload, created_by: userId }).select().single();
+      setSavingBoard(false);
+      if (error) { alert(`Couldn't create board: ${error.message}`); return; }
+      if (data) {
+        setBoards(prev => [data as JamBoard, ...prev]);
+        setActiveBoardId((data as JamBoard).id);
+      }
     }
-    setShowBoardForm(false);
-    setBoardForm({ client_name: "", month: "", description: "" });
+    closeBoardForm();
   }
 
   async function addNote() {
@@ -228,7 +272,7 @@ export default function JammingBoardClient({ userId, userName, clientNames }: Pr
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors ${showArchived ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}>
               <Archive className="w-3.5 h-3.5" /> {showArchived ? "Showing archived" : "Show archived"}
             </button>
-            <button onClick={() => setShowBoardForm(true)}
+            <button onClick={openNewBoard}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-xl text-sm font-medium hover:opacity-90 shadow-sm">
               <Plus className="w-4 h-4" /> New Board
             </button>
@@ -277,7 +321,7 @@ export default function JammingBoardClient({ userId, userName, clientNames }: Pr
             </div>
             <p className="text-lg font-bold text-slate-800 mb-1">No jam sessions yet</p>
             <p className="text-sm text-slate-500 mb-5">Start a board for a client and let the team pile on ideas.</p>
-            <button onClick={() => setShowBoardForm(true)}
+            <button onClick={openNewBoard}
               className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-xl text-sm font-medium hover:opacity-90">
               Start the first board
             </button>
@@ -298,6 +342,14 @@ export default function JammingBoardClient({ userId, userName, clientNames }: Pr
                 <p className="text-sm text-slate-500 mt-0.5">
                   {activeBoard.description || prompt}
                 </p>
+                {activeBoard.link && (
+                  <a href={activeBoard.link} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 mt-1.5 text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-2.5 py-1 rounded-full transition-colors max-w-full">
+                    <LinkIcon className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{activeBoard.link.replace(/^https?:\/\//, "")}</span>
+                    <ExternalLink className="w-3 h-3 shrink-0 opacity-60" />
+                  </a>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <div className="relative">
@@ -305,6 +357,10 @@ export default function JammingBoardClient({ userId, userName, clientNames }: Pr
                   <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search ideas…"
                     className="pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 w-40" />
                 </div>
+                <button onClick={() => openEditBoard(activeBoard)} title="Edit board name, month or link"
+                  className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg">
+                  <Pencil className="w-4 h-4" />
+                </button>
                 <button onClick={() => toggleArchive(activeBoard)} title={activeBoard.is_archived ? "Unarchive" : "Archive board"}
                   className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg">
                   <Archive className="w-4 h-4" />
@@ -441,9 +497,9 @@ export default function JammingBoardClient({ userId, userName, clientNames }: Pr
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-violet-600" />
-                <h3 className="font-semibold text-slate-900">Start a Jam Board</h3>
+                <h3 className="font-semibold text-slate-900">{editingBoardId ? "Edit Board" : "Start a Jam Board"}</h3>
               </div>
-              <button onClick={() => setShowBoardForm(false)}><X className="w-4 h-4 text-slate-400" /></button>
+              <button onClick={closeBoardForm}><X className="w-4 h-4 text-slate-400" /></button>
             </div>
             <div className="p-5 space-y-3">
               <div>
@@ -469,13 +525,24 @@ export default function JammingBoardClient({ userId, userName, clientNames }: Pr
                   placeholder="e.g. Diwali campaign — big swings only"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Link <span className="text-slate-400 font-normal">(optional)</span></label>
+                <div className="relative">
+                  <LinkIcon className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  <input value={boardForm.link}
+                    onChange={e => setBoardForm(f => ({ ...f, link: e.target.value }))}
+                    placeholder="Brief, deck, folder or reference URL"
+                    className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">Anything the team should open while jamming</p>
+              </div>
             </div>
             <div className="flex gap-3 px-5 py-4 border-t border-slate-100">
-              <button onClick={() => setShowBoardForm(false)} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-              <button onClick={createBoard} disabled={savingBoard || !boardForm.client_name.trim()}
+              <button onClick={closeBoardForm} className="flex-1 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={saveBoard} disabled={savingBoard || !boardForm.client_name.trim()}
                 className="flex-1 py-2.5 text-sm bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
-                {savingBoard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                {savingBoard ? "Creating…" : "Let's jam"}
+                {savingBoard ? <Loader2 className="w-4 h-4 animate-spin" /> : editingBoardId ? <Check className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                {savingBoard ? (editingBoardId ? "Saving…" : "Creating…") : editingBoardId ? "Save changes" : "Let's jam"}
               </button>
             </div>
           </div>
