@@ -69,11 +69,16 @@ interface Assignment { clientId: string; memberId: string; weight?: number }
 /**
  * Work out what share of each person's month goes to each client.
  *
- * Entered weights win. Anyone left blank splits whatever percentage is
- * still unclaimed, evenly — so "60% on Acme" across four clients leaves the
- * other three sharing 40%. With no weights at all this degrades exactly to
- * the old even split. Shares are normalised so a person's allocations always
- * sum to 1, even if the entered weights over- or under-run 100.
+ * An entered weight is ABSOLUTE: 25% means a quarter of that person's salary
+ * lands on this client, and the other 75% stays unallocated unless it is
+ * claimed elsewhere. It is not a share relative to their other clients.
+ *
+ * Anyone left blank splits whatever percentage is still unclaimed, evenly —
+ * so 60% on one client across four leaves the other three on 13.3% each. With
+ * no weights at all everyone splits 100% evenly, matching the old behaviour.
+ *
+ * Only if entered weights exceed 100% are they scaled down proportionally,
+ * so a person can never be costed at more than one salary.
  */
 function allocateEffort(assignments: Assignment[]): Record<string, Record<string, number>> {
   const byMember: Record<string, Assignment[]> = {};
@@ -85,21 +90,21 @@ function allocateEffort(assignments: Assignment[]): Record<string, Record<string
     const unweighted = list.filter(a => !((a.weight ?? 0) > 0));
     const claimed = weighted.reduce((s, a) => s + (a.weight || 0), 0);
 
-    const raw: Record<string, number> = {};
+    const pct: Record<string, number> = {};
+
     if (weighted.length === 0) {
-      // No weights anywhere for this person — even split
-      for (const a of list) raw[a.clientId] = 1 / list.length;
+      // Nothing specified — spread the whole month evenly
+      for (const a of list) pct[a.clientId] = 100 / list.length;
     } else {
-      for (const a of weighted) raw[a.clientId] = (a.weight || 0);
-      const leftover = Math.max(0, 100 - claimed);
-      for (const a of unweighted) raw[a.clientId] = unweighted.length ? leftover / unweighted.length : 0;
+      // Over-committed: scale entered weights back to fit 100%
+      const scale = claimed > 100 ? 100 / claimed : 1;
+      for (const a of weighted) pct[a.clientId] = (a.weight || 0) * scale;
+      const leftover = Math.max(0, 100 - claimed * scale);
+      for (const a of unweighted) pct[a.clientId] = unweighted.length ? leftover / unweighted.length : 0;
     }
 
-    const total = Object.values(raw).reduce((s, v) => s + v, 0);
     out[memberId] = {};
-    for (const [clientId, v] of Object.entries(raw)) {
-      out[memberId][clientId] = total > 0 ? v / total : 0;
-    }
+    for (const [clientId, v] of Object.entries(pct)) out[memberId][clientId] = v / 100;
   }
   return out;
 }
@@ -1266,11 +1271,13 @@ function EmployeeTable({ rows, members, memberSalaries, effortShares }: {
 
     const cost = lines.reduce((s, l) => s + l.cost, 0);
     const credited = lines.reduce((s, l) => s + l.credited, 0);
+    const allocated = lines.reduce((s, l) => s + l.fraction, 0);
     return {
       memberId,
       name: member?.full_name || "Unknown",
       designation: member?.designation,
-      salary, lines, cost, credited,
+      salary, lines, cost, credited, allocated,
+      unallocated: Math.max(0, 1 - allocated),
       ratio: cost > 0 ? credited / cost : 0,
     };
   }).filter(p => p.lines.length > 0)
@@ -1335,9 +1342,25 @@ function EmployeeTable({ rows, members, memberSalaries, effortShares }: {
                       <span className="text-xs font-medium text-slate-400 tabular-nums">{Math.round(l.fraction * 100)}%</span>
                     </div>
                   ))}
+                  {p.unallocated > 0.005 && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden shrink-0">
+                        <div className="h-full bg-slate-300 rounded-full" style={{ width: `${Math.round(p.unallocated * 100)}%` }} />
+                      </div>
+                      <span className="text-xs text-slate-400 italic truncate">unallocated</span>
+                      <span className="text-xs font-medium text-slate-400 tabular-nums">{Math.round(p.unallocated * 100)}%</span>
+                    </div>
+                  )}
                 </div>
               </td>
-              <td className="px-3 py-3 text-right text-slate-500 tabular-nums">{p.salary > 0 ? fmt(p.salary) : "—"}</td>
+              <td className="px-3 py-3 text-right text-slate-500 tabular-nums">
+                {p.salary > 0 ? fmt(p.salary) : "—"}
+                {p.salary > 0 && p.unallocated > 0.005 && (
+                  <span className="block text-[11px] text-slate-400">
+                    {Math.round(p.allocated * 100)}% costed
+                  </span>
+                )}
+              </td>
               <td className="px-3 py-3 text-right font-medium text-rose-600 tabular-nums">{p.cost > 0 ? `−${fmt(Math.round(p.cost))}` : "—"}</td>
               <td className="px-3 py-3 text-right font-semibold text-emerald-700 tabular-nums">{fmt(Math.round(p.credited))}</td>
               <td className="px-5 py-3 text-right">
