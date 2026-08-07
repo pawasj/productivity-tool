@@ -49,12 +49,16 @@ jobs:
 
       - name: Upload bundle & deploy (with retries)
         env:
-          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          DEPLOY_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           HOSTN: ${{ secrets.SSH_HOST }}
           USERN: ${{ secrets.SSH_USER }}
           PORTN: ${{ secrets.SSH_PORT }}
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+          sudo apt-get update -qq && sudo apt-get install -y -qq rsync
+          # Key-based auth: no password, so brute-force lockouts can't break deploys
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
           cat > remote.sh <<'EOF'
           set -e
           PARENT="$HOME/domains/bombaycontentcompany.com"
@@ -77,14 +81,15 @@ jobs:
           rm -rf "$PARENT/nodejs-old" "$HOME/bundle.tgz"
           echo ">> Deployed (atomic swap) and restarted."
           EOF
-          SCPO="-P $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60"
-          SSHO="-p $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60 -o ServerAliveInterval=15"
+          KEYO="-i $HOME/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes"
+          SCPO="$KEYO -P $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60"
+          SSHO="$KEYO -p $PORTN -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=60 -o ServerAliveInterval=15"
           n=0
           while true; do
             n=$((n+1))
             echo "=== Deploy attempt $n ==="
-            if sshpass -e scp $SCPO bundle.tgz "$USERN@$HOSTN:bundle.tgz" \
-               && sshpass -e ssh $SSHO "$USERN@$HOSTN" 'bash -s' < remote.sh; then
+            if scp $SCPO bundle.tgz "$USERN@$HOSTN:bundle.tgz" \
+               && ssh $SSHO "$USERN@$HOSTN" 'bash -s' < remote.sh; then
               echo "Deploy succeeded on attempt $n"; break
             fi
             if [ "$n" -ge 3 ]; then echo "Deploy failed after $n attempts"; exit 1; fi
