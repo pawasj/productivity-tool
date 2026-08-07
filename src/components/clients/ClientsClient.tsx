@@ -85,6 +85,8 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
   const [search, setSearch] = useState("");
   const [filterVertical, setFilterVertical] = useState("");
   const [month, setMonth] = useState(thisMonth);
+  // Client-level P&L is admin-only, even for members who can see Client Details
+  const [tab, setTab] = useState<"clients" | "profitability">("clients");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ExtClient | null>(null);
   const [form, setForm] = useState<typeof EMPTY>({ ...EMPTY });
@@ -218,28 +220,40 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
       offerings: form.offerings || [],
       updated_at: new Date().toISOString(),
     };
-    if (editing) {
-      await supabase.from("clients").update(payload).eq("id", editing.id);
-    } else {
-      await supabase.from("clients").insert({ ...payload, created_at: new Date().toISOString() });
+    const { error } = editing
+      ? await supabase.from("clients").update(payload).eq("id", editing.id)
+      : await supabase.from("clients").insert({ ...payload, created_at: new Date().toISOString() });
+    setSaving(false);
+
+    if (error) {
+      // A missing column rejects the whole row, so nothing at all gets saved —
+      // say so plainly instead of closing the form as if it worked.
+      const missingColumn = /column .* does not exist|schema cache/i.test(error.message);
+      alert(missingColumn
+        ? `Couldn't save — the database is missing a column this form writes to.\n\n${error.message}\n\nRun supabase-pending.sql in the Supabase SQL editor, then try again.`
+        : `Couldn't save: ${error.message}`);
+      return;
     }
-    setSaving(false); setShowForm(false); setEditing(null);
+
+    setShowForm(false); setEditing(null);
     load();
   }
 
   // Stop a retainer billing after the selected month, without deleting history
   async function discontinue(c: ExtClient) {
     if (!confirm(`Stop billing ${c.name} after ${monthLabel(month)}?\n\nThey stay on every month up to and including this one.`)) return;
-    await supabase.from("clients")
+    const { error } = await supabase.from("clients")
       .update({ end_month: month, status: "discontinued", updated_at: new Date().toISOString() })
       .eq("id", c.id);
+    if (error) { alert(`Couldn't discontinue: ${error.message}`); return; }
     load();
   }
 
   async function resume(c: ExtClient) {
-    await supabase.from("clients")
+    const { error } = await supabase.from("clients")
       .update({ end_month: null, status: "active", updated_at: new Date().toISOString() })
       .eq("id", c.id);
+    if (error) { alert(`Couldn't resume: ${error.message}`); return; }
     load();
   }
 
@@ -256,14 +270,19 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
     let totalCost = 0;
     const breakdown: { service: string; cost: number; note: string }[] = [];
 
+    let salaryCost = 0;      // allocated share of in-house salaries
+    let outsourcedCost = 0;  // freelancers / vendors / interns
+
     for (const o of c.offerings || []) {
       if (o.in_house && o.responsible_id) {
         const sal = memberSalaries[o.responsible_id] || 0;
         const count = memberClientCounts[o.responsible_id] || 1;
         const allocated = count > 0 ? sal / count : 0;
+        salaryCost += allocated;
         totalCost += allocated;
         breakdown.push({ service: o.service, cost: allocated, note: `${o.responsible_name} (${fmt(sal)}/mo ÷ ${count} clients)` });
       } else if (!o.in_house && o.outsource_cost) {
+        outsourcedCost += o.outsource_cost;
         totalCost += o.outsource_cost;
         breakdown.push({ service: o.service, cost: o.outsource_cost, note: `Outsourced — ${o.responsible_name || "vendor"}` });
       }
@@ -278,7 +297,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
 
     const profit = revenue - totalCost;
     const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-    return { revenue, totalCost, profit, margin, distribution, breakdown };
+    return { revenue, totalCost, profit, margin, distribution, salaryCost, outsourcedCost, breakdown };
   }
 
   // Everything below is scoped to the selected month
@@ -319,6 +338,16 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {isAdmin && (
+              <div className="flex gap-1 p-1 bg-slate-100 rounded-lg mr-1">
+                {([["clients", "Clients"], ["profitability", "Profitability"]] as const).map(([k, label]) => (
+                  <button key={k} onClick={() => setTab(k)}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${tab === k ? "bg-white shadow text-violet-700" : "text-slate-500 hover:text-slate-700"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             <Calendar className="w-4 h-4 text-slate-400" />
             <MonthPicker value={month} onChange={setMonth} accent="focus:ring-violet-500" />
             {!isCurrentMonth && (
@@ -330,9 +359,11 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
             <button onClick={load} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
               <RefreshCw className="w-4 h-4" />
             </button>
-            <button onClick={openNew} className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-xl text-sm font-medium hover:bg-violet-700">
-              <Plus className="w-4 h-4" /> Add Client
-            </button>
+            {tab === "clients" && (
+              <button onClick={openNew} className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-xl text-sm font-medium hover:bg-violet-700">
+                <Plus className="w-4 h-4" /> Add Client
+              </button>
+            )}
           </div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -353,6 +384,12 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
         </div>
       </div>
 
+      {isAdmin && tab === "profitability" ? (
+        <ProfitabilityTable
+          rows={monthClients.map(c => ({ client: c, ...calcProfitability(c) }))}
+          month={month}
+        />
+      ) : (
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Client List */}
         <div className="flex flex-col w-full md:w-80 max-h-64 md:max-h-none border-b md:border-b-0 md:border-r border-slate-200 bg-white overflow-hidden shrink-0">
@@ -672,6 +709,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
           })()}
         </div>
       </div>
+      )}
 
       {/* Form Modal */}
       {showForm && (
@@ -938,6 +976,154 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+interface ProfitRow {
+  client: ExtClient;
+  revenue: number;
+  totalCost: number;
+  profit: number;
+  margin: number;
+  distribution: number;
+  salaryCost: number;
+  outsourcedCost: number;
+}
+
+function ProfitabilityTable({ rows, month }: { rows: ProfitRow[]; month: string }) {
+  const [sortKey, setSortKey] = useState<"name" | "revenue" | "profit" | "margin">("profit");
+
+  const sorted = [...rows].sort((a, b) => {
+    if (sortKey === "name") return a.client.name.localeCompare(b.client.name);
+    if (sortKey === "revenue") return b.revenue - a.revenue;
+    if (sortKey === "margin") return b.margin - a.margin;
+    return b.profit - a.profit;
+  });
+
+  const t = rows.reduce((acc, r) => ({
+    revenue: acc.revenue + r.revenue,
+    salary: acc.salary + r.salaryCost,
+    outsourced: acc.outsourced + r.outsourcedCost,
+    distribution: acc.distribution + r.distribution,
+    cost: acc.cost + r.totalCost,
+    profit: acc.profit + r.profit,
+  }), { revenue: 0, salary: 0, outsourced: 0, distribution: 0, cost: 0, profit: 0 });
+  const totalMargin = t.revenue > 0 ? (t.profit / t.revenue) * 100 : 0;
+
+  function marginCls(m: number) {
+    if (m >= 50) return "text-emerald-700 bg-emerald-50";
+    if (m >= 25) return "text-amber-700 bg-amber-50";
+    return "text-rose-700 bg-rose-50";
+  }
+
+  return (
+    <div className="flex-1 overflow-auto p-4 sm:p-6">
+      <div className="max-w-7xl mx-auto space-y-4">
+        {/* Summary */}
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+          {[
+            { label: "Revenue", value: fmt(t.revenue), cls: "text-slate-900" },
+            { label: "Salary Allocation", value: `−${fmt(Math.round(t.salary))}`, cls: "text-rose-600" },
+            { label: "Freelancers / Vendors", value: `−${fmt(t.outsourced)}`, cls: "text-rose-600" },
+            { label: "Distribution Payout", value: `−${fmt(t.distribution)}`, cls: "text-rose-600" },
+            { label: "Total Profit", value: fmt(Math.round(t.profit)), cls: t.profit >= 0 ? "text-emerald-600" : "text-rose-600" },
+            { label: "Blended Margin", value: `${totalMargin.toFixed(1)}%`, cls: totalMargin >= 25 ? "text-emerald-600" : "text-rose-600" },
+          ].map(c => (
+            <div key={c.label} className="bg-white rounded-xl p-3 border border-slate-200">
+              <p className="text-xs text-slate-500">{c.label}</p>
+              <p className={`text-lg font-bold mt-0.5 ${c.cls}`}>{c.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-wrap gap-2">
+            <div>
+              <h2 className="font-semibold text-slate-900 text-sm">Client Level Profitability</h2>
+              <p className="text-xs text-slate-400">{monthLabel(month)} · {rows.length} client{rows.length === 1 ? "" : "s"}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">Sort by</span>
+              <select value={sortKey} onChange={e => setSortKey(e.target.value as typeof sortKey)}
+                className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-violet-500">
+                <option value="profit">Profit</option>
+                <option value="margin">Margin %</option>
+                <option value="revenue">Revenue</option>
+                <option value="name">Name</option>
+              </select>
+            </div>
+          </div>
+
+          {rows.length === 0 ? (
+            <div className="text-center py-16 text-slate-400 text-sm">
+              <TrendingUp className="w-10 h-10 mx-auto mb-2 opacity-30" />
+              No clients running in {monthLabel(month)}.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/60">
+                    <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500 uppercase">Client</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Type</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Revenue</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Salary</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Freelance</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Distribution</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Total Cost</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Profit</th>
+                    <th className="text-right px-5 py-2.5 text-xs font-semibold text-slate-500 uppercase">Margin</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {sorted.map(r => (
+                    <tr key={r.client.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-5 py-3">
+                        <span className="font-medium text-slate-900">{r.client.name}</span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${r.client.engagement_type === "retainer" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                          {r.client.engagement_type === "retainer" ? "Retainer" : "One-time"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-right font-semibold text-slate-900 tabular-nums">{fmt(r.revenue)}</td>
+                      <td className="px-3 py-3 text-right text-slate-500 tabular-nums">{r.salaryCost > 0 ? `−${fmt(Math.round(r.salaryCost))}` : "—"}</td>
+                      <td className="px-3 py-3 text-right text-slate-500 tabular-nums">{r.outsourcedCost > 0 ? `−${fmt(r.outsourcedCost)}` : "—"}</td>
+                      <td className="px-3 py-3 text-right text-slate-500 tabular-nums">{r.distribution > 0 ? `−${fmt(r.distribution)}` : "—"}</td>
+                      <td className="px-3 py-3 text-right font-medium text-rose-600 tabular-nums">{r.totalCost > 0 ? `−${fmt(Math.round(r.totalCost))}` : "—"}</td>
+                      <td className={`px-3 py-3 text-right font-bold tabular-nums ${r.profit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                        {fmt(Math.round(r.profit))}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold tabular-nums ${marginCls(r.margin)}`}>
+                          {r.margin.toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold">
+                    <td className="px-5 py-3 text-slate-900" colSpan={2}>Total</td>
+                    <td className="px-3 py-3 text-right text-slate-900 tabular-nums">{fmt(t.revenue)}</td>
+                    <td className="px-3 py-3 text-right text-slate-600 tabular-nums">−{fmt(Math.round(t.salary))}</td>
+                    <td className="px-3 py-3 text-right text-slate-600 tabular-nums">−{fmt(t.outsourced)}</td>
+                    <td className="px-3 py-3 text-right text-slate-600 tabular-nums">−{fmt(t.distribution)}</td>
+                    <td className="px-3 py-3 text-right text-rose-600 tabular-nums">−{fmt(Math.round(t.cost))}</td>
+                    <td className={`px-3 py-3 text-right tabular-nums ${t.profit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(Math.round(t.profit))}</td>
+                    <td className="px-5 py-3 text-right tabular-nums">{totalMargin.toFixed(1)}%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+          <p className="px-5 py-3 text-xs text-slate-400 border-t border-slate-100">
+            Salary is each in-house owner&apos;s monthly payout split evenly across the clients they handle. Freelance covers outsourced offerings; distribution is what goes out to creators and pages.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
