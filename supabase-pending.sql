@@ -190,6 +190,17 @@ drop policy if exists "own_delete_docs" on storage.objects;
 create policy "own_delete_docs" on storage.objects for delete to authenticated
   using (bucket_id = 'employee-docs' and (storage.foldername(name))[1] = auth.uid()::text);
 
+-- ─── 10. Client Details: month-aware engagements ─────────────────────────────
+-- start_month  = month the retainer began, or the month a one-time deal was approved
+-- end_month    = last month a retainer is billed; null means still running
+alter table clients add column if not exists start_month text;
+alter table clients add column if not exists end_month text;
+
+-- Backfill existing rows from their creation date so nothing disappears
+update clients set start_month = to_char(created_at, 'YYYY-MM') where start_month is null;
+
+create index if not exists clients_start_month_idx on clients(start_month);
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Verify: every row below should say true.
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -201,5 +212,7 @@ union all select 'jam_notes',         to_regclass('public.jam_notes')         is
 union all select 'reimbursements',    to_regclass('public.reimbursements')    is not null
 union all select 'leave_applications (HR)', to_regclass('public.leave_applications') is not null
 union all select 'employee_details (HR)',   to_regclass('public.employee_details')   is not null
+union all select 'clients.start_month',
+  exists (select 1 from information_schema.columns where table_name='clients' and column_name='start_month')
 union all select 'employee-docs bucket',
   exists (select 1 from storage.buckets where id = 'employee-docs' and public);

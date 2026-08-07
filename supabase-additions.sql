@@ -356,3 +356,14 @@ create policy "own_delete_reimb" on reimbursements for delete to authenticated
     user_id = auth.uid()
     or exists (select 1 from profiles where id = auth.uid() and role = 'admin')
   );
+
+-- ─── 10. Client Details: month-aware engagements ─────────────────────────────
+-- start_month  = month the retainer began, or the month a one-time deal was approved
+-- end_month    = last month a retainer is billed; null means still running
+alter table clients add column if not exists start_month text;
+alter table clients add column if not exists end_month text;
+
+-- Backfill existing rows from their creation date so nothing disappears
+update clients set start_month = to_char(created_at, 'YYYY-MM') where start_month is null;
+
+create index if not exists clients_start_month_idx on clients(start_month);

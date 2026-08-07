@@ -15,6 +15,11 @@ export async function POST(req: NextRequest) {
   const { data: lead, error: leadErr } = await svc.from("leads").select("*").eq("id", lead_id).single();
   if (leadErr || !lead) return NextResponse.json({ error: leadErr?.message || "Lead not found" }, { status: 404 });
 
+  // The engagement's month is when the lead was approved, not when this row
+  // happens to be written — a one-time deal must report in its approval month.
+  const approvedAt = lead.approved_at ? new Date(lead.approved_at) : new Date();
+  const startMonth = `${approvedAt.getFullYear()}-${String(approvedAt.getMonth() + 1).padStart(2, "0")}`;
+
   const payload = {
     lead_id: lead.id,
     name: lead.company_name,
@@ -27,6 +32,7 @@ export async function POST(req: NextRequest) {
     deliverables: lead.notes || "",
     vertical_id: lead.vertical_id || null,
     status: "active",
+    start_month: startMonth,
     updated_at: new Date().toISOString(),
   };
 

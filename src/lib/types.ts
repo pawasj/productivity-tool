@@ -455,6 +455,10 @@ export interface Client {
   engagement_type?: "one_time" | "retainer";
   amount?: number;
   monthly_value?: number;
+  /** YYYY-MM — retainer start, or the month a one-time deal was approved */
+  start_month?: string;
+  /** YYYY-MM — last billed month for a retainer; null/undefined = still running */
+  end_month?: string;
   deliverables?: string;
   vertical_id?: string;
   vertical?: Vertical;

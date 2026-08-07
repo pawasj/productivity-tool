@@ -140,6 +140,8 @@ export default function OwnedMediaSalesClient({ userId, properties, members }: P
         contact_phone: lead.contact_phone || null,
         engagement_type: "one_time",
         amount: lead.deal_value || 0,
+        // One-time revenue reports in the month it was approved
+        start_month: new Date().toISOString().slice(0, 7),
         deliverables: `Owned media promotion${lead.property_name ? ` — ${lead.property_name}` : ""}`,
         status: "active",
         notes: lead.notes || null,
