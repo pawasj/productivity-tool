@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase";
 import {
   IndianRupee, Loader2, Calendar, Pencil, Check, X,
   ChevronDown, ChevronRight, Plus, BarChart3, ListChecks, Trash2,
-  Landmark, CheckCircle2,
+  Landmark, CheckCircle2, Receipt, Paperclip,
 } from "lucide-react";
-import type { Vertical, Profile } from "@/lib/types";
+import type { Vertical, Profile, Reimbursement } from "@/lib/types";
+import { REIMBURSEMENT_TYPES } from "@/lib/types";
 import MonthPicker from "@/components/ui/MonthPicker";
 
 interface SalaryEntry {
@@ -78,6 +79,9 @@ export default function SalaryClient({ userId, verticals, members: initialMember
   const [tab, setTab] = useState<"payroll" | "history">("payroll");
   const [month, setMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [entries, setEntries] = useState<SalaryEntry[]>([]);
+  // Approved reimbursement claims for this month — rendered as their own
+  // line items under each person, never merged into the salary row.
+  const [reimbursements, setReimbursements] = useState<Reimbursement[]>([]);
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<Profile[]>(initialMembers);
   const [vendors, setVendors] = useState<VendorRow[]>(initialVendors);
@@ -153,8 +157,15 @@ export default function SalaryClient({ userId, verticals, members: initialMember
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await supabase.from("salary_entries").select("*").eq("month", month).order("member_name");
-      setEntries((data || []) as SalaryEntry[]);
+      const [entriesRes, reimbRes] = await Promise.all([
+        supabase.from("salary_entries").select("*").eq("month", month).order("member_name"),
+        supabase.from("reimbursements")
+          .select("*, profiles:user_id(full_name)")
+          .eq("month", month).eq("status", "approved")
+          .order("expense_date"),
+      ]);
+      setEntries((entriesRes.data || []) as SalaryEntry[]);
+      setReimbursements((reimbRes.data || []) as Reimbursement[]);
     } finally {
       setLoading(false);
     }
@@ -324,8 +335,11 @@ export default function SalaryClient({ userId, verticals, members: initialMember
   function passesPayFilter(p: RosterPerson) {
     if (payFilter === "all") return true;
     const e = entryFor(p);
-    if (payFilter === "paid") return !!e?.paid;
-    return !e?.paid; // unpaid — includes payouts not yet set
+    // Reimbursements count as payable money too, so someone with only an
+    // approved claim and no salary row still matches the filter.
+    const claims = reimbFor(p);
+    if (payFilter === "paid") return !!e?.paid || claims.some(r => r.paid);
+    return !e?.paid || claims.some(r => !r.paid); // unpaid — includes payouts not yet set
   }
 
   // Add payout (ad-hoc)
@@ -360,8 +374,34 @@ export default function SalaryClient({ userId, verticals, members: initialMember
     setAddForm({ ...EMPTY_ADD });
   }
 
-  const total = entries.reduce((s, e) => s + e.amount, 0);
-  const sectionTotals = (cat: string) => entries.filter(e => e.member_type === cat).reduce((s, e) => s + e.amount, 0);
+  // Approved claims belonging to a roster person (matched on profile id, with
+  // a name fallback so claims still show if a profile id ever changes).
+  function reimbFor(person: RosterPerson): Reimbursement[] {
+    if (person.isAdHoc) return [];
+    return reimbursements.filter(r =>
+      r.user_id === person.source_id
+      || (r.profiles as unknown as Profile)?.full_name === person.name
+    );
+  }
+  const reimbTotalFor = (person: RosterPerson) =>
+    reimbFor(person).reduce((a, r) => a + Number(r.amount || 0), 0);
+
+  async function toggleReimbPaid(r: Reimbursement) {
+    const next = !r.paid;
+    setReimbursements(prev => prev.map(x => x.id === r.id ? { ...x, paid: next } : x));
+    const { error } = await supabase.from("reimbursements").update({ paid: next }).eq("id", r.id);
+    if (error) {
+      setReimbursements(prev => prev.map(x => x.id === r.id ? { ...x, paid: !next } : x));
+      alert(`Failed to update paid status: ${error.message}`);
+    }
+  }
+
+  const reimbTotal = reimbursements.reduce((a, r) => a + Number(r.amount || 0), 0);
+  const total = entries.reduce((s, e) => s + e.amount, 0) + reimbTotal;
+  const sectionReimbTotal = (cat: string) =>
+    roster.filter(p => p.category === cat).reduce((a, p) => a + reimbTotalFor(p), 0);
+  const sectionTotals = (cat: string) =>
+    entries.filter(e => e.member_type === cat).reduce((s, e) => s + e.amount, 0) + sectionReimbTotal(cat);
   const sectionSet = (cat: string) => entries.filter(e => e.member_type === cat).length;
 
   const SECTIONS = [
@@ -542,8 +582,11 @@ export default function SalaryClient({ userId, verticals, members: initialMember
                             );
                           }
 
+                          const personReimb = reimbFor(person);
+
                           return (
-                            <tr key={person.key} className="hover:bg-slate-50/50 transition-colors">
+                            <React.Fragment key={person.key}>
+                            <tr className="hover:bg-slate-50/50 transition-colors">
                               <td className="px-5 py-3">
                                 <div className="flex items-center gap-2">
                                   <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xs shrink-0">
@@ -612,6 +655,57 @@ export default function SalaryClient({ userId, verticals, members: initialMember
                                 </div>
                               </td>
                             </tr>
+
+                            {/* Approved reimbursements — one line item each, auto-pulled
+                                from the claims this person raised in My Profile */}
+                            {personReimb.map(r => (
+                              <tr key={r.id} className="bg-sky-50/40 hover:bg-sky-50/70 transition-colors">
+                                <td className="px-5 py-2 pl-12">
+                                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-sky-800">
+                                    <Receipt className="w-3.5 h-3.5 text-sky-500" />
+                                    Reimbursement
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 text-xs text-slate-500">
+                                  {REIMBURSEMENT_TYPES.find(t => t.value === r.expense_type)?.label || r.expense_type}
+                                  <span className="text-slate-400">
+                                    {" · "}
+                                    {new Date(r.expense_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2">
+                                  <span className="text-xs text-slate-400">Reimbursement</span>
+                                </td>
+                                <td className="px-4 py-2 text-xs text-slate-500 max-w-[220px] truncate">
+                                  {r.description || <span className="text-slate-300">—</span>}
+                                </td>
+                                <td className="px-4 py-2 text-right">
+                                  <span className="font-semibold text-sky-800">{fmt(Number(r.amount))}</span>
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                  <button onClick={() => toggleReimbPaid(r)}
+                                    title={r.paid ? "Mark as unpaid" : "Mark as paid"}
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${r.paid
+                                      ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                      : "bg-slate-100 text-slate-500 hover:bg-amber-100 hover:text-amber-700"}`}>
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    {r.paid ? "Paid" : "Mark Paid"}
+                                  </button>
+                                </td>
+                                <td className="px-4 py-2">
+                                  <div className="flex justify-end">
+                                    {r.evidence_url && (
+                                      <a href={r.evidence_url} target="_blank" rel="noopener noreferrer"
+                                        title={r.evidence_name || "View evidence"}
+                                        className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors">
+                                        <Paperclip className="w-3.5 h-3.5" />
+                                      </a>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                            </React.Fragment>
                           );
                         })}
                       </tbody>

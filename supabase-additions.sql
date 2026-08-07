@@ -296,3 +296,62 @@ create table if not exists jam_notes (
 alter table jam_notes enable row level security;
 drop policy if exists "jam_notes_all" on jam_notes;
 create policy "jam_notes_all" on jam_notes for all to authenticated using (true) with check (true);
+
+-- ─── Reimbursements ──────────────────────────────────────────────────────────
+-- Team members raise claims from My Profile; their reporting manager approves.
+-- Approved claims surface automatically in Salary & Payouts for `month`.
+create table if not exists reimbursements (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  expense_date date not null,
+  -- `month` is derived from expense_date on write; Salary & Payouts keys off it
+  month text not null,
+  expense_type text not null check (expense_type in ('travel','food','beverage','cabs','other')),
+  amount numeric not null check (amount > 0),
+  description text,
+  evidence_url text,
+  evidence_path text,
+  evidence_name text,
+  status text not null default 'pending' check (status in ('pending','approved','rejected','cancelled')),
+  approver_id uuid references profiles(id) on delete set null,
+  approved_by uuid references profiles(id) on delete set null,
+  approved_at timestamptz,
+  rejection_reason text,
+  paid boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists reimbursements_user_month_idx on reimbursements(user_id, month);
+create index if not exists reimbursements_status_idx on reimbursements(status);
+
+alter table reimbursements enable row level security;
+
+-- Read: own claims, your reports' claims, or admin
+drop policy if exists "own_or_manager_read_reimb" on reimbursements;
+create policy "own_or_manager_read_reimb" on reimbursements for select to authenticated
+  using (
+    user_id = auth.uid()
+    or exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+    or exists (select 1 from profiles p where p.id = reimbursements.user_id and p.reporting_manager_id = auth.uid())
+  );
+
+-- Write: only ever for yourself
+drop policy if exists "own_write_reimb" on reimbursements;
+create policy "own_write_reimb" on reimbursements for insert to authenticated
+  with check (user_id = auth.uid());
+
+-- Update: claimant (cancel/edit while pending) or manager/admin (approve/reject)
+drop policy if exists "own_or_manager_update_reimb" on reimbursements;
+create policy "own_or_manager_update_reimb" on reimbursements for update to authenticated
+  using (
+    user_id = auth.uid()
+    or exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+    or exists (select 1 from profiles p where p.id = reimbursements.user_id and p.reporting_manager_id = auth.uid())
+  );
+
+drop policy if exists "own_delete_reimb" on reimbursements;
+create policy "own_delete_reimb" on reimbursements for delete to authenticated
+  using (
+    user_id = auth.uid()
+    or exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+  );

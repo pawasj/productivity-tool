@@ -5,12 +5,15 @@ import { createClient } from "@/lib/supabase";
 import type {
   Profile, EmployeeDetails, EmployeeBankDetails,
   EmployeeDocument, LeaveApplication, AttendanceLog, CompanyHoliday,
+  Reimbursement,
 } from "@/lib/types";
+import { REIMBURSEMENT_TYPES } from "@/lib/types";
 import {
   User, MapPin, CreditCard, FileText, Calendar, ClipboardList,
   Save, Upload, Check, X, AlertCircle, Eye, EyeOff, ChevronDown,
   Briefcase, Phone, Mail, Heart, Home, Building2, Clock,
   CheckCircle2, XCircle, Loader2, Trash2, Download, Shield,
+  Receipt, Paperclip, IndianRupee, ExternalLink,
 } from "lucide-react";
 
 const TABS = [
@@ -20,6 +23,7 @@ const TABS = [
   { id: "bank", label: "Bank & Payroll", icon: CreditCard },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "leaves", label: "Leaves & Attendance", icon: ClipboardList },
+  { id: "reimbursements", label: "Reimbursements", icon: Receipt },
   { id: "calendar", label: "Calendar", icon: Calendar },
 ];
 
@@ -40,6 +44,18 @@ const LEAVE_COLORS: Record<string, string> = {
   half_day: "bg-amber-100 text-amber-700",
   optional: "bg-slate-100 text-slate-600",
 };
+
+const REIMB_COLORS: Record<string, string> = {
+  travel: "bg-sky-100 text-sky-700",
+  food: "bg-orange-100 text-orange-700",
+  beverage: "bg-teal-100 text-teal-700",
+  cabs: "bg-yellow-100 text-yellow-700",
+  other: "bg-slate-100 text-slate-600",
+};
+
+const EMPTY_REIMB = { expense_date: "", expense_type: "travel", amount: "", description: "" };
+
+function rupees(n: number) { return `₹${Number(n || 0).toLocaleString("en-IN")}`; }
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -82,6 +98,13 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
   const [showAccountNumber, setShowAccountNumber] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [leaveForm, setLeaveForm] = useState({ leave_type: "casual", from_date: "", to_date: "", reason: "" });
+  const [reimbursements, setReimbursements] = useState<Reimbursement[]>([]);
+  const [teamReimb, setTeamReimb] = useState<Reimbursement[]>([]);
+  const [reimbForm, setReimbForm] = useState({ ...EMPTY_REIMB });
+  const [showReimbForm, setShowReimbForm] = useState(false);
+  const [reimbFile, setReimbFile] = useState<File | null>(null);
+  const [reimbMonth, setReimbMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const reimbFileRef = useRef<HTMLInputElement>(null);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [attendanceMonth, setAttendanceMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -98,7 +121,8 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
     fetchLeaves();
     fetchAttendance();
     fetchHolidays();
-    if (isReportingManager) fetchTeamLeaves();
+    fetchReimbursements();
+    if (isReportingManager) { fetchTeamLeaves(); fetchTeamReimbursements(); }
   }, []);
 
   async function fetchDetails() {
@@ -134,6 +158,22 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
       .order("created_at", { ascending: false });
     const myTeam = members.filter(m => m.reporting_manager_id === profile.id).map(m => m.id);
     setTeamLeaves(((data || []) as LeaveApplication[]).filter(l => myTeam.includes(l.user_id)));
+  }
+
+  async function fetchReimbursements() {
+    const { data } = await supabase.from("reimbursements")
+      .select("*, approver:approved_by(full_name)")
+      .eq("user_id", profile.id)
+      .order("expense_date", { ascending: false });
+    setReimbursements((data || []) as Reimbursement[]);
+  }
+
+  async function fetchTeamReimbursements() {
+    const { data } = await supabase.from("reimbursements")
+      .select("*, profiles:user_id(full_name, email, designation), approver:approved_by(full_name)")
+      .order("created_at", { ascending: false });
+    const myTeam = members.filter(m => m.reporting_manager_id === profile.id).map(m => m.id);
+    setTeamReimb(((data || []) as Reimbursement[]).filter(r => myTeam.includes(r.user_id)));
   }
 
   async function changePassword() {
@@ -249,6 +289,90 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
     fetchTeamLeaves();
   }
 
+  // ── Reimbursements ─────────────────────────────────────
+  async function submitReimbursement() {
+    const amount = parseFloat(reimbForm.amount);
+    if (!reimbForm.expense_date || !amount || amount <= 0) return;
+    setSaving(true);
+
+    // Supporting evidence is optional at the DB level but strongly encouraged;
+    // upload first so a storage failure never leaves an orphaned claim.
+    let evidence: { url?: string; path?: string; name?: string } = {};
+    if (reimbFile) {
+      const ext = reimbFile.name.split(".").pop();
+      const path = `${profile.id}/reimbursements/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("employee-docs").upload(path, reimbFile);
+      if (upErr) { flash("error", `Evidence upload failed: ${upErr.message}`); setSaving(false); return; }
+      const { data: urlData } = supabase.storage.from("employee-docs").getPublicUrl(path);
+      evidence = { url: urlData.publicUrl, path, name: reimbFile.name };
+    }
+
+    const { data, error } = await supabase.from("reimbursements").insert({
+      user_id: profile.id,
+      expense_date: reimbForm.expense_date,
+      month: reimbForm.expense_date.slice(0, 7),
+      expense_type: reimbForm.expense_type,
+      amount,
+      description: reimbForm.description || null,
+      evidence_url: evidence.url || null,
+      evidence_path: evidence.path || null,
+      evidence_name: evidence.name || null,
+      approver_id: profile.reporting_manager_id || null,
+    }).select().single();
+    setSaving(false);
+
+    if (error) { flash("error", error.message); return; }
+    flash("success", profile.reporting_manager_id
+      ? "Claim sent to your reporting manager"
+      : "Claim submitted — no reporting manager set, an admin will review it");
+    setShowReimbForm(false);
+    setReimbForm({ ...EMPTY_REIMB });
+    setReimbFile(null);
+    if (reimbFileRef.current) reimbFileRef.current.value = "";
+    fetchReimbursements();
+
+    // Ping the approver (service-role route — RLS blocks cross-user inserts)
+    if (data) {
+      fetch("/api/reimbursements/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "submitted", reimbursement_id: (data as Reimbursement).id }),
+      }).catch(() => {});
+    }
+  }
+
+  async function cancelReimbursement(id: string) {
+    if (!confirm("Withdraw this reimbursement claim?")) return;
+    await supabase.from("reimbursements")
+      .update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", id);
+    fetchReimbursements();
+  }
+
+  async function deleteReimbursement(r: Reimbursement) {
+    if (!confirm("Delete this claim permanently?")) return;
+    if (r.evidence_path) await supabase.storage.from("employee-docs").remove([r.evidence_path]);
+    await supabase.from("reimbursements").delete().eq("id", r.id);
+    fetchReimbursements();
+  }
+
+  async function approveReimbursement(id: string, approve: boolean, rejectionReason?: string) {
+    const { error } = await supabase.from("reimbursements").update({
+      status: approve ? "approved" : "rejected",
+      approved_by: profile.id,
+      approved_at: new Date().toISOString(),
+      rejection_reason: rejectionReason || null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", id);
+    if (error) { flash("error", error.message); return; }
+    flash("success", approve ? "Approved — now queued in Salary & Payouts" : "Claim rejected");
+    fetchTeamReimbursements();
+    fetch("/api/reimbursements/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event: approve ? "approved" : "rejected", reimbursement_id: id }),
+    }).catch(() => {});
+  }
+
   // ── Add Attendance ───────────────────────────────────────────────────────
   async function logAttendance(date: string, status: string) {
     await supabase.from("attendance_logs").upsert(
@@ -259,7 +383,7 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
   }
 
   const tabs = [...TABS];
-  if (isReportingManager) tabs.push({ id: "team", label: "Team Leaves", icon: Briefcase });
+  if (isReportingManager) tabs.push({ id: "team", label: "Team Approvals", icon: Briefcase });
 
   const manager = members.find(m => m.id === profile.reporting_manager_id);
 
@@ -745,6 +869,145 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
           </div>
         )}
 
+        {/* ── REIMBURSEMENTS ── */}
+        {activeTab === "reimbursements" && (
+          <div className="max-w-3xl space-y-6">
+            {/* Totals at a glance */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Pending", key: "pending", color: "text-amber-600" },
+                { label: "Approved", key: "approved", color: "text-emerald-600" },
+                { label: "Rejected", key: "rejected", color: "text-rose-600" },
+              ].map(({ label, key, color }) => {
+                const rows = reimbursements.filter(r => r.status === key);
+                const sum = rows.reduce((a, r) => a + Number(r.amount || 0), 0);
+                return (
+                  <div key={key} className="bg-white border border-slate-200 rounded-xl p-4">
+                    <p className="text-xs text-slate-500">{label}</p>
+                    <p className={`text-2xl font-bold mt-1 ${color}`}>{rupees(sum)}</p>
+                    <p className="text-xs text-slate-400">{rows.length} claim{rows.length === 1 ? "" : "s"}</p>
+                  </div>
+                );
+              })}
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <p className="text-xs text-slate-500">Reimbursed</p>
+                <p className="text-2xl font-bold mt-1 text-indigo-600">
+                  {rupees(reimbursements.filter(r => r.status === "approved" && r.paid).reduce((a, r) => a + Number(r.amount || 0), 0))}
+                </p>
+                <p className="text-xs text-slate-400">marked paid</p>
+              </div>
+            </div>
+
+            <Section title="Reimbursement Claims" icon={Receipt}>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-slate-500">
+                  {manager
+                    ? <>Approved by <span className="font-medium text-slate-700">{manager.full_name}</span></>
+                    : <span className="text-amber-600">No reporting manager set — an admin will review your claims.</span>}
+                </p>
+                <button onClick={() => setShowReimbForm(!showReimbForm)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors shrink-0">
+                  <ChevronDown className={`w-4 h-4 transition-transform ${showReimbForm ? "rotate-180" : ""}`} />
+                  New Claim
+                </button>
+              </div>
+
+              {showReimbForm && (
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-4 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="Date of Expense">
+                      <input type="date" value={reimbForm.expense_date} max={new Date().toISOString().slice(0, 10)}
+                        onChange={e => setReimbForm({ ...reimbForm, expense_date: e.target.value })} className={inputCls} />
+                    </Field>
+                    <Field label="Type">
+                      <select value={reimbForm.expense_type}
+                        onChange={e => setReimbForm({ ...reimbForm, expense_type: e.target.value })} className={inputCls}>
+                        {REIMBURSEMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Amount (₹)">
+                      <input type="number" min="1" step="0.01" value={reimbForm.amount}
+                        onWheel={e => e.currentTarget.blur()}
+                        onChange={e => setReimbForm({ ...reimbForm, amount: e.target.value })}
+                        placeholder="0" className={inputCls} />
+                    </Field>
+                    <Field label="Supporting Evidence">
+                      <input ref={reimbFileRef} type="file" accept="image/*,application/pdf"
+                        onChange={e => setReimbFile(e.target.files?.[0] || null)}
+                        className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 cursor-pointer" />
+                      <p className="text-[11px] text-slate-400 mt-1">Image or PDF — bill, invoice or receipt</p>
+                    </Field>
+                    <Field label="Description" className="sm:col-span-2">
+                      <textarea value={reimbForm.description} rows={2}
+                        onChange={e => setReimbForm({ ...reimbForm, description: e.target.value })}
+                        placeholder="What was this expense for?" className={`${inputCls} resize-none`} />
+                    </Field>
+                  </div>
+                  {reimbForm.expense_date && (
+                    <p className="text-xs text-indigo-700 bg-white/70 rounded-lg px-3 py-2">
+                      Once approved, this will appear in Salary &amp; Payouts for{" "}
+                      <span className="font-semibold">
+                        {new Date(reimbForm.expense_date + "T00:00:00").toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
+                      </span>.
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={submitReimbursement}
+                      disabled={saving || !reimbForm.expense_date || !reimbForm.amount || Number(reimbForm.amount) <= 0}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg disabled:opacity-60">
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Send for Approval
+                    </button>
+                    <button onClick={() => { setShowReimbForm(false); setReimbFile(null); }}
+                      className="px-4 py-2 text-sm text-slate-600 hover:bg-white rounded-lg">Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {reimbursements.length === 0 ? (
+                <p className="text-sm text-slate-400">No reimbursement claims yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {reimbursements.map(r => (
+                    <div key={r.id} className="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-lg">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${REIMB_COLORS[r.expense_type]}`}>
+                        {REIMBURSEMENT_TYPES.find(t => t.value === r.expense_type)?.label}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800">
+                          {rupees(r.amount)}
+                          <span className="text-slate-400 font-normal ml-2">
+                            {new Date(r.expense_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                          </span>
+                        </p>
+                        {r.description && <p className="text-xs text-slate-500 mt-0.5">{r.description}</p>}
+                        {r.rejection_reason && <p className="text-xs text-rose-500 mt-0.5">Reason: {r.rejection_reason}</p>}
+                        {r.evidence_url && (
+                          <a href={r.evidence_url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 mt-1">
+                            <Paperclip className="w-3 h-3" /> {r.evidence_name || "Evidence"} <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status]}`}>{r.status}</span>
+                        {r.status === "approved" && r.paid && (
+                          <span className="text-[11px] text-emerald-600 font-medium">paid</span>
+                        )}
+                        {r.status === "pending" && (
+                          <button onClick={() => cancelReimbursement(r.id)} className="text-xs text-slate-400 hover:text-rose-600">Withdraw</button>
+                        )}
+                        {(r.status === "cancelled" || r.status === "rejected") && (
+                          <button onClick={() => deleteReimbursement(r)} className="text-xs text-slate-400 hover:text-rose-600">Delete</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Section>
+          </div>
+        )}
+
         {/* ── GOOGLE CALENDAR ── */}
         {activeTab === "calendar" && (
           <div className="max-w-xl space-y-4">
@@ -789,9 +1052,118 @@ export default function UserProfileClient({ profile: initProfile, members, calCo
                 </div>
               )}
             </Section>
+
+            <div className="mt-6">
+              <Section title="Team Reimbursement Claims" icon={Receipt}>
+                {(() => {
+                  const pending = teamReimb.filter(r => r.status === "pending");
+                  const settled = teamReimb.filter(r => r.status !== "pending");
+                  if (teamReimb.length === 0) {
+                    return <p className="text-sm text-slate-400">No reimbursement claims from your team.</p>;
+                  }
+                  return (
+                    <div className="space-y-4">
+                      {pending.length > 0 && (
+                        <div className="space-y-3">
+                          <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">
+                            Awaiting your approval · {rupees(pending.reduce((a, r) => a + Number(r.amount || 0), 0))}
+                          </p>
+                          {pending.map(r => (
+                            <TeamReimbursementCard key={r.id} claim={r}
+                              onApprove={id => approveReimbursement(id, true)}
+                              onReject={(id, reason) => approveReimbursement(id, false, reason)} />
+                          ))}
+                        </div>
+                      )}
+                      {settled.length > 0 && (
+                        <div className="space-y-3">
+                          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Decided</p>
+                          {settled.map(r => (
+                            <TeamReimbursementCard key={r.id} claim={r}
+                              onApprove={id => approveReimbursement(id, true)}
+                              onReject={(id, reason) => approveReimbursement(id, false, reason)} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </Section>
+            </div>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function TeamReimbursementCard({ claim, onApprove, onReject }: { claim: Reimbursement; onApprove: (id: string) => void; onReject: (id: string, reason: string) => void }) {
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
+  const p = claim.profiles as unknown as Profile;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4">
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm shrink-0">
+          {p?.full_name?.charAt(0)?.toUpperCase() || "?"}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-slate-800">{p?.full_name}</p>
+          <p className="text-xs text-slate-400">{p?.designation}</p>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${REIMB_COLORS[claim.expense_type]}`}>
+              {REIMBURSEMENT_TYPES.find(t => t.value === claim.expense_type)?.label}
+            </span>
+            <span className="text-sm font-semibold text-slate-800 flex items-center">
+              <IndianRupee className="w-3.5 h-3.5" />{Number(claim.amount).toLocaleString("en-IN")}
+            </span>
+            <span className="text-xs text-slate-500">
+              {new Date(claim.expense_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+            </span>
+          </div>
+          {claim.description && <p className="text-xs text-slate-500 mt-1.5">{claim.description}</p>}
+          {claim.evidence_url ? (
+            <a href={claim.evidence_url} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 mt-1.5 font-medium">
+              <Paperclip className="w-3 h-3" /> View {claim.evidence_name || "evidence"} <ExternalLink className="w-3 h-3" />
+            </a>
+          ) : (
+            <p className="inline-flex items-center gap-1 text-xs text-amber-600 mt-1.5">
+              <AlertCircle className="w-3 h-3" /> No supporting evidence attached
+            </p>
+          )}
+          {claim.rejection_reason && <p className="text-xs text-rose-500 mt-1">Reason: {claim.rejection_reason}</p>}
+        </div>
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[claim.status]}`}>
+          {claim.status}
+        </span>
+      </div>
+      {claim.status === "pending" && (
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          {!rejecting ? (
+            <div className="flex gap-2">
+              <button onClick={() => onApprove(claim.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+              </button>
+              <button onClick={() => setRejecting(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-medium rounded-lg border border-rose-200">
+                <XCircle className="w-3.5 h-3.5" /> Reject
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason for rejection (optional)" className={`${inputCls} text-xs`} />
+              <div className="flex gap-2">
+                <button onClick={() => { onReject(claim.id, reason); setRejecting(false); }}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium rounded-lg">Confirm Reject</button>
+                <button onClick={() => setRejecting(false)} className="px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

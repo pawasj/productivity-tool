@@ -191,6 +191,40 @@ export interface LeaveApplication {
   approver?: Profile;
 }
 
+export const REIMBURSEMENT_TYPES = [
+  { value: "travel", label: "Travel" },
+  { value: "food", label: "Food" },
+  { value: "beverage", label: "Beverage" },
+  { value: "cabs", label: "Cabs" },
+  { value: "other", label: "Others" },
+] as const;
+
+export type ReimbursementType = (typeof REIMBURSEMENT_TYPES)[number]["value"];
+
+export interface Reimbursement {
+  id: string;
+  user_id: string;
+  expense_date: string;
+  /** YYYY-MM, derived from expense_date — Salary & Payouts keys off this */
+  month: string;
+  expense_type: ReimbursementType;
+  amount: number;
+  description?: string;
+  evidence_url?: string;
+  evidence_path?: string;
+  evidence_name?: string;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  approver_id?: string;
+  approved_by?: string;
+  approved_at?: string;
+  rejection_reason?: string;
+  paid?: boolean;
+  created_at: string;
+  updated_at?: string;
+  profiles?: Profile;
+  approver?: Profile;
+}
+
 export interface AttendanceLog {
   id: string;
   user_id: string;
