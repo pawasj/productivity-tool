@@ -23,6 +23,8 @@ interface Offering {
   responsible_id: string;
   responsible_name: string;
   outsource_cost: number;
+  /** % of this person's month spent on this client. Blank = share evenly. */
+  effort_pct?: number;
 }
 
 interface ExtClient extends Client {
@@ -61,6 +63,46 @@ function monthLabel(ym: string) {
   return new Date(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 }
 function thisMonth() { return new Date().toISOString().slice(0, 7); }
+
+interface Assignment { clientId: string; memberId: string; weight?: number }
+
+/**
+ * Work out what share of each person's month goes to each client.
+ *
+ * Entered weights win. Anyone left blank splits whatever percentage is
+ * still unclaimed, evenly — so "60% on Acme" across four clients leaves the
+ * other three sharing 40%. With no weights at all this degrades exactly to
+ * the old even split. Shares are normalised so a person's allocations always
+ * sum to 1, even if the entered weights over- or under-run 100.
+ */
+function allocateEffort(assignments: Assignment[]): Record<string, Record<string, number>> {
+  const byMember: Record<string, Assignment[]> = {};
+  for (const a of assignments) (byMember[a.memberId] ||= []).push(a);
+
+  const out: Record<string, Record<string, number>> = {};
+  for (const [memberId, list] of Object.entries(byMember)) {
+    const weighted = list.filter(a => (a.weight ?? 0) > 0);
+    const unweighted = list.filter(a => !((a.weight ?? 0) > 0));
+    const claimed = weighted.reduce((s, a) => s + (a.weight || 0), 0);
+
+    const raw: Record<string, number> = {};
+    if (weighted.length === 0) {
+      // No weights anywhere for this person — even split
+      for (const a of list) raw[a.clientId] = 1 / list.length;
+    } else {
+      for (const a of weighted) raw[a.clientId] = (a.weight || 0);
+      const leftover = Math.max(0, 100 - claimed);
+      for (const a of unweighted) raw[a.clientId] = unweighted.length ? leftover / unweighted.length : 0;
+    }
+
+    const total = Object.values(raw).reduce((s, v) => s + v, 0);
+    out[memberId] = {};
+    for (const [clientId, v] of Object.entries(raw)) {
+      out[memberId][clientId] = total > 0 ? v / total : 0;
+    }
+  }
+  return out;
+}
 
 /**
  * Is this client billable in the given month?
@@ -173,7 +215,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
     if (exists) {
       sf("offerings", cur.filter(o => o.service !== service));
     } else {
-      sf("offerings", [...cur, { service, in_house: true, responsible_type: "", responsible_id: "", responsible_name: "", outsource_cost: 0 }]);
+      sf("offerings", [...cur, { service, in_house: true, responsible_type: "", responsible_id: "", responsible_name: "", outsource_cost: 0, effort_pct: undefined }]);
     }
   }
 
@@ -186,7 +228,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
     if (!s) return;
     const cur = form.offerings || [];
     if (!cur.find(o => o.service === s)) {
-      sf("offerings", [...cur, { service: s, in_house: true, responsible_type: "", responsible_id: "", responsible_name: "", outsource_cost: 0 }]);
+      sf("offerings", [...cur, { service: s, in_house: true, responsible_type: "", responsible_id: "", responsible_name: "", outsource_cost: 0, effort_pct: undefined }]);
     }
     setCustomOffering("");
   }
@@ -276,11 +318,19 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
     for (const o of c.offerings || []) {
       if (o.in_house && o.responsible_id) {
         const sal = memberSalaries[o.responsible_id] || 0;
+        const share = effortShares[o.responsible_id]?.[c.id];
         const count = memberClientCounts[o.responsible_id] || 1;
-        const allocated = count > 0 ? sal / count : 0;
+        // Fall back to the even split if this client is not in the current
+        // month's allocation set (e.g. viewing an ended engagement)
+        const fraction = share ?? (count > 0 ? 1 / count : 0);
+        const allocated = sal * fraction;
         salaryCost += allocated;
         totalCost += allocated;
-        breakdown.push({ service: o.service, cost: allocated, note: `${o.responsible_name} (${fmt(sal)}/mo ÷ ${count} clients)` });
+        breakdown.push({
+          service: o.service,
+          cost: allocated,
+          note: `${o.responsible_name} — ${(fraction * 100).toFixed(0)}% of ${fmt(sal)}/mo`,
+        });
       } else if (!o.in_house && o.outsource_cost) {
         outsourcedCost += o.outsource_cost;
         totalCost += o.outsource_cost;
@@ -302,6 +352,16 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
 
   // Everything below is scoped to the selected month
   const monthClients = clients.filter(c => activeInMonth(c, month));
+
+  // Effort shares are computed over the clients running this month, so a
+  // person's time is not diluted by engagements that already ended.
+  const effortShares = allocateEffort(
+    monthClients.flatMap(c =>
+      (c.offerings || [])
+        .filter(o => o.in_house && o.responsible_id)
+        .map(o => ({ clientId: c.id, memberId: o.responsible_id, weight: o.effort_pct }))
+    )
+  );
 
   const filtered = monthClients.filter(c => {
     const q = search.toLowerCase();
@@ -388,6 +448,9 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
         <ProfitabilityTable
           rows={monthClients.map(c => ({ client: c, ...calcProfitability(c) }))}
           month={month}
+          members={members}
+          memberSalaries={memberSalaries}
+          effortShares={effortShares}
         />
       ) : (
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
@@ -918,11 +981,32 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
                                   <option value="">Select team member</option>
                                   {members.map(m => <option key={m.id} value={m.id}>{m.full_name}{m.designation ? ` (${m.designation})` : ""}</option>)}
                                 </select>
-                                {o.responsible_id && memberSalaries[o.responsible_id] && (
-                                  <p className="text-xs text-slate-400 mt-1">
-                                    <IndianRupee className="w-3 h-3 inline" />{memberSalaries[o.responsible_id].toLocaleString("en-IN")}/mo salary
-                                    · allocated across {memberClientCounts[o.responsible_id] || 1} client(s)
-                                  </p>
+                                {o.responsible_id && (
+                                  <div className="mt-2">
+                                    <label className="block text-xs text-slate-500 mb-1">
+                                      Effort on this client <span className="text-slate-400">(optional)</span>
+                                    </label>
+                                    <div className="relative w-32">
+                                      <input type="number" min="0" max="100" onWheel={e => e.currentTarget.blur()}
+                                        value={o.effort_pct ?? ""} placeholder="auto"
+                                        onChange={e => updateOffering(o.service, {
+                                          effort_pct: e.target.value === "" ? undefined : Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)),
+                                        })}
+                                        className="w-full pr-7 pl-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                                      <span className="absolute right-3 top-2.5 text-xs text-slate-400">%</span>
+                                    </div>
+                                    {memberSalaries[o.responsible_id] ? (
+                                      <p className="text-xs text-slate-400 mt-1">
+                                        <IndianRupee className="w-3 h-3 inline" />{memberSalaries[o.responsible_id].toLocaleString("en-IN")}/mo salary
+                                        {" · "}
+                                        {o.effort_pct
+                                          ? `${o.effort_pct}% costed here`
+                                          : `split evenly across ${memberClientCounts[o.responsible_id] || 1} client(s)`}
+                                      </p>
+                                    ) : (
+                                      <p className="text-xs text-slate-400 mt-1">Leave blank to split their time evenly</p>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             ) : (
@@ -992,7 +1076,16 @@ interface ProfitRow {
   outsourcedCost: number;
 }
 
-function ProfitabilityTable({ rows, month }: { rows: ProfitRow[]; month: string }) {
+interface ProfitTableProps {
+  rows: ProfitRow[];
+  month: string;
+  members: Profile[];
+  memberSalaries: Record<string, number>;
+  effortShares: Record<string, Record<string, number>>;
+}
+
+function ProfitabilityTable({ rows, month, members, memberSalaries, effortShares }: ProfitTableProps) {
+  const [view, setView] = useState<"client" | "employee">("client");
   const [sortKey, setSortKey] = useState<"name" | "revenue" | "profit" | "margin">("profit");
 
   const sorted = [...rows].sort((a, b) => {
@@ -1041,18 +1134,30 @@ function ProfitabilityTable({ rows, month }: { rows: ProfitRow[]; month: string 
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-wrap gap-2">
             <div>
-              <h2 className="font-semibold text-slate-900 text-sm">Client Level Profitability</h2>
+              <h2 className="font-semibold text-slate-900 text-sm">
+                {view === "client" ? "Client Level Profitability" : "Team Utilisation & Billability"}
+              </h2>
               <p className="text-xs text-slate-400">{monthLabel(month)} · {rows.length} client{rows.length === 1 ? "" : "s"}</p>
             </div>
             <div className="flex items-center gap-2">
+              <div className="flex gap-1 p-1 bg-slate-100 rounded-lg mr-1">
+                {([["client", "Client-wise"], ["employee", "Employee-wise"]] as const).map(([k, label]) => (
+                  <button key={k} onClick={() => setView(k)}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${view === k ? "bg-white shadow text-violet-700" : "text-slate-500 hover:text-slate-700"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
               <span className="text-xs text-slate-400">Sort by</span>
-              <select value={sortKey} onChange={e => setSortKey(e.target.value as typeof sortKey)}
-                className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-violet-500">
-                <option value="profit">Profit</option>
-                <option value="margin">Margin %</option>
-                <option value="revenue">Revenue</option>
-                <option value="name">Name</option>
-              </select>
+              {view === "client" && (
+                <select value={sortKey} onChange={e => setSortKey(e.target.value as typeof sortKey)}
+                  className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-violet-500">
+                  <option value="profit">Profit</option>
+                  <option value="margin">Margin %</option>
+                  <option value="revenue">Revenue</option>
+                  <option value="name">Name</option>
+                </select>
+              )}
             </div>
           </div>
 
@@ -1061,6 +1166,8 @@ function ProfitabilityTable({ rows, month }: { rows: ProfitRow[]; month: string 
               <TrendingUp className="w-10 h-10 mx-auto mb-2 opacity-30" />
               No clients running in {monthLabel(month)}.
             </div>
+          ) : view === "employee" ? (
+            <EmployeeTable rows={rows} members={members} memberSalaries={memberSalaries} effortShares={effortShares} />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1120,10 +1227,136 @@ function ProfitabilityTable({ rows, month }: { rows: ProfitRow[]; month: string 
             </div>
           )}
           <p className="px-5 py-3 text-xs text-slate-400 border-t border-slate-100">
-            Salary is each in-house owner&apos;s monthly payout split evenly across the clients they handle. Freelance covers outsourced offerings; distribution is what goes out to creators and pages.
+            {view === "client"
+              ? "Salary is each in-house owner's monthly payout split by the effort % set on their offerings — evenly where none is set. Freelance covers outsourced offerings; distribution is what goes out to creators and pages."
+              : "Effort is what share of a person's month each client takes. Revenue credited splits a client's revenue across its delivery costs, so it reflects contribution rather than headcount. Ratio is revenue credited ÷ salary cost — above 1.0 means they are billing more than they cost."}
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+function EmployeeTable({ rows, members, memberSalaries, effortShares }: {
+  rows: ProfitRow[];
+  members: Profile[];
+  memberSalaries: Record<string, number>;
+  effortShares: Record<string, Record<string, number>>;
+}) {
+  const byClient = new Map(rows.map(r => [r.client.id, r]));
+
+  // One entry per person who has in-house work on a client running this month
+  const people = Object.keys(effortShares).map(memberId => {
+    const member = members.find(m => m.id === memberId);
+    const salary = memberSalaries[memberId] || 0;
+    const shares = effortShares[memberId] || {};
+
+    const lines = Object.entries(shares)
+      .filter(([clientId]) => byClient.has(clientId))
+      .map(([clientId, fraction]) => {
+        const r = byClient.get(clientId)!;
+        const cost = salary * fraction;
+        // Credit revenue in proportion to this person's share of what the
+        // client costs to deliver — contribution, not headcount.
+        const credited = r.totalCost > 0 ? r.revenue * (cost / r.totalCost) : 0;
+        return { client: r.client, fraction, cost, credited };
+      })
+      .sort((a, b) => b.fraction - a.fraction);
+
+    const cost = lines.reduce((s, l) => s + l.cost, 0);
+    const credited = lines.reduce((s, l) => s + l.credited, 0);
+    return {
+      memberId,
+      name: member?.full_name || "Unknown",
+      designation: member?.designation,
+      salary, lines, cost, credited,
+      ratio: cost > 0 ? credited / cost : 0,
+    };
+  }).filter(p => p.lines.length > 0)
+    .sort((a, b) => b.ratio - a.ratio);
+
+  if (people.length === 0) {
+    return (
+      <div className="text-center py-16 text-slate-400 text-sm">
+        <UserCircle className="w-10 h-10 mx-auto mb-2 opacity-30" />
+        No team members are assigned to any client this month.
+        <p className="text-xs mt-1">Assign owners under a client&apos;s offerings to see utilisation here.</p>
+      </div>
+    );
+  }
+
+  const t = people.reduce((a, p) => ({
+    cost: a.cost + p.cost,
+    credited: a.credited + p.credited,
+  }), { cost: 0, credited: 0 });
+
+  function ratioCls(r: number) {
+    if (r >= 1.5) return "text-emerald-700 bg-emerald-50";
+    if (r >= 1) return "text-amber-700 bg-amber-50";
+    return "text-rose-700 bg-rose-50";
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 bg-slate-50/60">
+            <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500 uppercase">Team Member</th>
+            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Clients &amp; Effort</th>
+            <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Salary</th>
+            <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Cost Allocated</th>
+            <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase">Revenue Credited</th>
+            <th className="text-right px-5 py-2.5 text-xs font-semibold text-slate-500 uppercase">Ratio</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-50">
+          {people.map(p => (
+            <tr key={p.memberId} className="hover:bg-slate-50/50 transition-colors align-top">
+              <td className="px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-bold text-xs shrink-0">
+                    {p.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900 truncate">{p.name}</p>
+                    {p.designation && <p className="text-xs text-slate-400 truncate">{p.designation}</p>}
+                  </div>
+                </div>
+              </td>
+              <td className="px-3 py-3">
+                <div className="space-y-1">
+                  {p.lines.map(l => (
+                    <div key={l.client.id} className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden shrink-0">
+                        <div className="h-full bg-violet-500 rounded-full" style={{ width: `${Math.round(l.fraction * 100)}%` }} />
+                      </div>
+                      <span className="text-xs text-slate-600 truncate max-w-[160px]">{l.client.name}</span>
+                      <span className="text-xs font-medium text-slate-400 tabular-nums">{Math.round(l.fraction * 100)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </td>
+              <td className="px-3 py-3 text-right text-slate-500 tabular-nums">{p.salary > 0 ? fmt(p.salary) : "—"}</td>
+              <td className="px-3 py-3 text-right font-medium text-rose-600 tabular-nums">{p.cost > 0 ? `−${fmt(Math.round(p.cost))}` : "—"}</td>
+              <td className="px-3 py-3 text-right font-semibold text-emerald-700 tabular-nums">{fmt(Math.round(p.credited))}</td>
+              <td className="px-5 py-3 text-right">
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold tabular-nums ${ratioCls(p.ratio)}`}>
+                  {p.ratio.toFixed(2)}x
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold">
+            <td className="px-5 py-3 text-slate-900" colSpan={3}>Total</td>
+            <td className="px-3 py-3 text-right text-rose-600 tabular-nums">−{fmt(Math.round(t.cost))}</td>
+            <td className="px-3 py-3 text-right text-emerald-700 tabular-nums">{fmt(Math.round(t.credited))}</td>
+            <td className="px-5 py-3 text-right tabular-nums">{t.cost > 0 ? `${(t.credited / t.cost).toFixed(2)}x` : "—"}</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }
