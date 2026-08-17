@@ -36,19 +36,40 @@ export async function POST(req: NextRequest) {
     updated_at: new Date().toISOString(),
   };
 
+  // start_month arrived in a later migration. If it has not been applied yet
+  // Postgres rejects the whole row, which would silently lose the client — so
+  // drop the column and retry rather than fail the approval.
+  function isMissingColumn(msg: string) {
+    return /start_month|schema cache|column .* does not exist/i.test(msg);
+  }
+  function withoutStartMonth(p: typeof payload) {
+    const { start_month, ...rest } = p;
+    void start_month;
+    return rest;
+  }
+
   // Manual upsert on lead_id — does not rely on a unique constraint existing
   const { data: existing } = await svc.from("clients").select("id").eq("lead_id", lead.id).maybeSingle();
   if (existing) {
-    const { error } = await svc.from("clients").update(payload).eq("id", existing.id);
+    let { error } = await svc.from("clients").update(payload).eq("id", existing.id);
+    if (error && isMissingColumn(error.message)) {
+      ({ error } = await svc.from("clients").update(withoutStartMonth(payload)).eq("id", existing.id));
+      if (!error) return NextResponse.json({ client_id: existing.id, created: false, degraded: "start_month" });
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ client_id: existing.id, created: false });
   }
 
-  const { data: created, error } = await svc
-    .from("clients")
-    .insert({ ...payload, created_at: new Date().toISOString() })
-    .select("id")
-    .single();
+  const insert = (body: Record<string, unknown>) =>
+    svc.from("clients").insert({ ...body, created_at: new Date().toISOString() }).select("id").single();
+
+  let { data: created, error } = await insert(payload);
+  if (error && isMissingColumn(error.message)) {
+    ({ data: created, error } = await insert(withoutStartMonth(payload)));
+    if (!error && created) {
+      return NextResponse.json({ client_id: created.id, created: true, degraded: "start_month" });
+    }
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ client_id: created.id, created: true });
+  return NextResponse.json({ client_id: created!.id, created: true });
 }

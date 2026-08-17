@@ -243,6 +243,48 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
     sf("team_member_ids", cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]);
   }
 
+  // Approved leads can miss the clients table if the sync failed at approval
+  // time (e.g. a migration had not been applied yet). This re-runs it.
+  const [syncing, setSyncing] = useState(false);
+  async function syncApprovedLeads() {
+    setSyncing(true);
+    const { data: leads, error } = await supabase
+      .from("leads").select("id, company_name").eq("status", "approved");
+    if (error) { setSyncing(false); alert(`Couldn't read leads: ${error.message}`); return; }
+
+    const { data: existing } = await supabase.from("clients").select("lead_id, name");
+    const haveLeadIds = new Set((existing || []).map(c => c.lead_id).filter(Boolean));
+    const haveNames = new Set((existing || []).map(c => (c.name || "").toLowerCase()));
+    const missing = (leads || []).filter(l =>
+      !haveLeadIds.has(l.id) && !haveNames.has((l.company_name || "").toLowerCase()));
+
+    if (missing.length === 0) {
+      setSyncing(false);
+      alert("Every approved lead is already in Client Details.");
+      return;
+    }
+
+    const failed: string[] = [];
+    for (const l of missing) {
+      try {
+        const res = await fetch("/api/pipeline/approve-client", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lead_id: l.id }),
+        });
+        const json = await res.json();
+        if (!res.ok || json.error) failed.push(`${l.company_name}: ${json.error || res.status}`);
+      } catch (e) {
+        failed.push(`${l.company_name}: ${(e as Error).message}`);
+      }
+    }
+    setSyncing(false);
+    alert(failed.length
+      ? `Synced ${missing.length - failed.length} of ${missing.length}.\n\nFailed:\n${failed.join("\n")}`
+      : `Added ${missing.length} client${missing.length === 1 ? "" : "s"} from approved leads.`);
+    load();
+  }
+
   async function save() {
     if (!form.name.trim()) return;
     setSaving(true);
@@ -419,6 +461,14 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
               <button onClick={() => setMonth(thisMonth())}
                 className="px-2.5 py-1.5 text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-lg">
                 This month
+              </button>
+            )}
+            {isAdmin && tab === "clients" && (
+              <button onClick={syncApprovedLeads} disabled={syncing}
+                title="Pull in any approved pipeline lead that is missing here"
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60">
+                {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Sync approved leads
               </button>
             )}
             <button onClick={load} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
