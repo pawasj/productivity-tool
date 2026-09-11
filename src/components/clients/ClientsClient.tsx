@@ -248,40 +248,50 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
   const [syncing, setSyncing] = useState(false);
   async function syncApprovedLeads() {
     setSyncing(true);
-    const { data: leads, error } = await supabase
-      .from("leads").select("id, company_name").eq("status", "approved");
-    if (error) { setSyncing(false); alert(`Couldn't read leads: ${error.message}`); return; }
+    // Engagements arrive from two places: pipeline leads and Distribution Hub briefs
+    const [leadsRes, briefsRes] = await Promise.all([
+      supabase.from("leads").select("id, company_name").eq("status", "approved"),
+      supabase.from("client_briefs").select("id, brand_name").eq("status", "approved"),
+    ]);
+    if (leadsRes.error) { setSyncing(false); alert(`Couldn't read leads: ${leadsRes.error.message}`); return; }
 
     const { data: existing } = await supabase.from("clients").select("lead_id, name");
     const haveLeadIds = new Set((existing || []).map(c => c.lead_id).filter(Boolean));
     const haveNames = new Set((existing || []).map(c => (c.name || "").toLowerCase()));
-    const missing = (leads || []).filter(l =>
-      !haveLeadIds.has(l.id) && !haveNames.has((l.company_name || "").toLowerCase()));
+
+    const missing: { key: "lead_id" | "brief_id"; id: string; name: string }[] = [
+      ...(leadsRes.data || [])
+        .filter(l => !haveLeadIds.has(l.id) && !haveNames.has((l.company_name || "").toLowerCase()))
+        .map(l => ({ key: "lead_id" as const, id: l.id, name: l.company_name })),
+      ...(briefsRes.data || [])
+        .filter(b => !haveNames.has((b.brand_name || "").toLowerCase()))
+        .map(b => ({ key: "brief_id" as const, id: String(b.id), name: b.brand_name })),
+    ];
 
     if (missing.length === 0) {
       setSyncing(false);
-      alert("Every approved lead is already in Client Details.");
+      alert("Every approved lead and brief is already in Client Details.");
       return;
     }
 
     const failed: string[] = [];
-    for (const l of missing) {
+    for (const m of missing) {
       try {
         const res = await fetch("/api/pipeline/approve-client", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lead_id: l.id }),
+          body: JSON.stringify({ [m.key]: m.id }),
         });
         const json = await res.json();
-        if (!res.ok || json.error) failed.push(`${l.company_name}: ${json.error || res.status}`);
+        if (!res.ok || json.error) failed.push(`${m.name}: ${json.error || res.status}`);
       } catch (e) {
-        failed.push(`${l.company_name}: ${(e as Error).message}`);
+        failed.push(`${m.name}: ${(e as Error).message}`);
       }
     }
     setSyncing(false);
     alert(failed.length
       ? `Synced ${missing.length - failed.length} of ${missing.length}.\n\nFailed:\n${failed.join("\n")}`
-      : `Added ${missing.length} client${missing.length === 1 ? "" : "s"} from approved leads.`);
+      : `Added ${missing.length} client${missing.length === 1 ? "" : "s"} from approved leads and briefs.`);
     load();
   }
 
@@ -465,7 +475,7 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
             )}
             {isAdmin && tab === "clients" && (
               <button onClick={syncApprovedLeads} disabled={syncing}
-                title="Pull in any approved pipeline lead that is missing here"
+                title="Pull in any approved lead or brief that is missing here"
                 className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60">
                 {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 Sync approved leads

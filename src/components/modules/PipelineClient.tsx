@@ -471,6 +471,20 @@ export default function PipelineClient({ initialLeads, initialBriefs, members, v
       setBriefs(prev => prev.map(b => String(b.id) === briefId ? { ...b } : b));
       return;
     }
+    if (status === "approved") {
+      // Approved briefs are live engagements — mirror them into Client Details
+      try {
+        const res = await fetch("/api/pipeline/approve-client", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ brief_id: briefId }),
+        });
+        const json = await res.json();
+        if (!res.ok || json.error) alert(`Approved, but could not sync to Client Details: ${json.error}`);
+      } catch {
+        alert("Approved, but could not sync to Client Details. Check the Clients tab.");
+      }
+    }
     if (status === "completed") router.push(`/dashboard/results?brief=${briefId}`);
   }
 
