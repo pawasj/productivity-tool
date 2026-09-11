@@ -206,6 +206,33 @@ create index if not exists clients_start_month_idx on clients(start_month);
 -- calculating client-level profitability.
 alter table clients add column if not exists distribution_payout numeric not null default 0;
 
+-- ─── 12. Outbound system emails ──────────────────────────────────────────────
+-- Audit trail for automated notices (e.g. reimbursement approvals to finance).
+-- Rows are written before the send is attempted, so a missing API key or a
+-- provider outage leaves a record that can be retried instead of vanishing.
+create table if not exists outbound_emails (
+  id uuid primary key default gen_random_uuid(),
+  to_addresses text[] not null,
+  subject text not null,
+  body_html text,
+  body_text text,
+  related_type text,
+  related_id uuid,
+  status text not null default 'pending' check (status in ('pending','sent','failed','skipped')),
+  provider_id text,
+  provider_response text,
+  sent_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists outbound_emails_status_idx on outbound_emails(status);
+create index if not exists outbound_emails_related_idx on outbound_emails(related_type, related_id);
+
+alter table outbound_emails enable row level security;
+-- Written by the service role only; admins may read the log
+drop policy if exists "admins_read_outbound_emails" on outbound_emails;
+create policy "admins_read_outbound_emails" on outbound_emails for select to authenticated
+  using (exists (select 1 from profiles where id = auth.uid() and role = 'admin'));
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Verify: every row below should say true.
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -219,5 +246,6 @@ union all select 'leave_applications (HR)', to_regclass('public.leave_applicatio
 union all select 'employee_details (HR)',   to_regclass('public.employee_details')   is not null
 union all select 'clients.start_month',
   exists (select 1 from information_schema.columns where table_name='clients' and column_name='start_month')
+union all select 'outbound_emails',    to_regclass('public.outbound_emails')    is not null
 union all select 'employee-docs bucket',
   exists (select 1 from storage.buckets where id = 'employee-docs' and public);

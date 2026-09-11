@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import {
   Briefcase, CheckSquare, ListTodo, Lightbulb, Loader2, ArrowRight, PhoneCall,
-  CalendarClock, ClipboardCheck, ExternalLink,
+  CalendarClock, ClipboardCheck, ExternalLink, Wallet,
 } from "lucide-react";
 import type { Vertical, Todo, Idea, Profile } from "@/lib/types";
 import { canAccess } from "@/lib/access-client";
@@ -45,6 +45,11 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [pendingLeaves, setPendingLeaves] = useState<Array<{ id: string; leave_type: string; from_date: string; to_date: string; days: number; profiles?: { full_name?: string } }>>([]);
   const [meetings, setMeetings] = useState<Array<{ id: string; summary?: string; start_time: string; meet_link?: string }>>([]);
+  // Approved-but-unpaid reimbursements — admins only, enforced server-side
+  const [payouts, setPayouts] = useState<{
+    rows: Array<{ id: string; amount: number; expense_type: string; month: string; profiles?: { full_name?: string } }>;
+    total: number;
+  }>({ rows: [], total: 0 });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,6 +72,8 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
     // Secondary widgets — leave approvals (managers/admins) + upcoming meetings
     fetch("/api/dashboard/pending-leaves").then(r => r.json())
       .then(j => setPendingLeaves(j.data || [])).catch(() => {});
+    fetch("/api/dashboard/pending-payouts").then(r => r.json())
+      .then(j => setPayouts({ rows: j.data || [], total: j.total || 0 })).catch(() => {});
     // /api/calendar/events syncs from Google (with token refresh) and returns events
     fetch("/api/calendar/events").then(r => r.json()).then(j => {
       const weekAhead = Date.now() + 7 * 24 * 60 * 60 * 1000;
@@ -111,8 +118,29 @@ export default function CollatedOverview({ verticals, userId, profile, focusVert
       )}
 
       {/* Leave approvals + upcoming meetings */}
-      {!focusVerticalId && (pendingLeaves.length > 0 || meetings.length > 0) && (
+      {!focusVerticalId && (pendingLeaves.length > 0 || meetings.length > 0 || payouts.rows.length > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {payouts.rows.length > 0 && (
+            <button onClick={() => router.push("/dashboard/salary")}
+              className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-left hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-2 mb-2">
+                <Wallet className="w-4 h-4 text-emerald-600" />
+                <p className="text-sm font-bold text-emerald-800">Pending Payouts</p>
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white bg-emerald-500">{payouts.rows.length}</span>
+                <span className="ml-auto text-xs font-bold text-emerald-700">{fmtL(payouts.total)}</span>
+                <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
+              <div className="space-y-1">
+                {payouts.rows.slice(0, 3).map(p => (
+                  <p key={p.id} className="text-xs text-emerald-800">
+                    <span className="font-semibold">{p.profiles?.full_name || "Member"}</span>
+                    {" — "}₹{Number(p.amount).toLocaleString("en-IN")} · {p.expense_type} · {p.month}
+                  </p>
+                ))}
+                {payouts.rows.length > 3 && <p className="text-[11px] text-emerald-500">+{payouts.rows.length - 3} more…</p>}
+              </div>
+            </button>
+          )}
           {pendingLeaves.length > 0 && (
             <button onClick={() => router.push("/dashboard/profile")}
               className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left hover:shadow-md transition-shadow">
