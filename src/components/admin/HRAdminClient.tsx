@@ -2,17 +2,31 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
-import type { Profile, LeaveApplication, CompanyHoliday, AppModule } from "@/lib/types";
+import type { Profile, LeaveApplication, CompanyHoliday, AppModule, EmployeeBankDetails } from "@/lib/types";
 import { ALL_MODULES, MODULE_LABELS } from "@/lib/types";
 import {
   Users, Calendar, ClipboardList, Save, Plus, Trash2,
   CheckCircle2, XCircle, Loader2, AlertCircle,
+  Landmark, FileSpreadsheet, Download, ExternalLink, Search, ShieldAlert,
 } from "lucide-react";
 
 const HR_TABS = [
   { id: "team", label: "Team Management", icon: Users },
   { id: "holidays", label: "Holiday Calendar", icon: Calendar },
   { id: "leaves", label: "All Leave Approvals", icon: ClipboardList },
+  { id: "bank", label: "Bank Details", icon: Landmark },
+];
+
+const EMPLOYMENT_LABELS: Record<string, string> = {
+  full_time: "Full-Time", part_time: "Part-Time",
+  contract: "Contract", intern: "Intern", freelancer: "Freelancer",
+};
+
+// Column order is shared by the on-screen table, the Google Sheet and the CSV
+const BANK_COLUMNS = [
+  "Employee ID", "Name", "Email", "Designation", "Department", "Employment Type",
+  "Account Holder Name", "Bank Name", "Account Number", "IFSC Code", "Branch",
+  "Account Type", "UPI ID", "Details Last Updated",
 ];
 
 const LEAVE_TYPES: Record<string, string> = {
@@ -53,10 +67,16 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
   const [leaveFilter, setLeaveFilter] = useState("pending");
   const [holidayForm, setHolidayForm] = useState({ name: "", date: "", holiday_type: "public", description: "" });
   const [showHolidayForm, setShowHolidayForm] = useState(false);
+  const [banks, setBanks] = useState<EmployeeBankDetails[]>([]);
+  const [bankLoading, setBankLoading] = useState(false);
+  const [bankSearch, setBankSearch] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState("");
 
   useEffect(() => {
     if (hrTab === "leaves") fetchLeaves();
     if (hrTab === "holidays") fetchHolidays();
+    if (hrTab === "bank") fetchBanks();
   }, [hrTab]);
 
   async function fetchLeaves() {
@@ -64,6 +84,82 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
       .select("*, profiles:user_id(full_name, email, reporting_manager_id), approver:approved_by(full_name)")
       .order("created_at", { ascending: false });
     setLeaves((data || []) as LeaveApplication[]);
+  }
+
+  async function fetchBanks() {
+    setBankLoading(true);
+    // RLS already limits this to admins; this component is admin-only anyway
+    const { data, error } = await supabase.from("employee_bank_details").select("*");
+    if (error) setMsg({ type: "error", text: `Couldn't load bank details: ${error.message}` });
+    setBanks((data || []) as EmployeeBankDetails[]);
+    setBankLoading(false);
+  }
+
+  // One row per team member, blank where they have not filled details in
+  function bankRows() {
+    const byUser = new Map(banks.map(b => [b.user_id, b]));
+    return members.map(m => {
+      const b = (byUser.get(m.id) || {}) as Partial<EmployeeBankDetails>;
+      return {
+        member: m,
+        cells: [
+          m.employee_id || "",
+          m.full_name || "",
+          m.email || "",
+          m.designation || "",
+          m.department || "",
+          EMPLOYMENT_LABELS[m.employment_type as string] || m.employment_type || "",
+          b.account_holder_name || "",
+          b.bank_name || "",
+          b.account_number || "",
+          b.ifsc_code || "",
+          b.branch_name || "",
+          b.account_type ? b.account_type.charAt(0).toUpperCase() + b.account_type.slice(1) : "",
+          b.upi_id || "",
+          b.updated_at ? new Date(b.updated_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "",
+        ] as string[],
+        hasDetails: Boolean(b.account_number || b.upi_id),
+      };
+    });
+  }
+
+  async function exportBankSheet() {
+    setExporting(true);
+    setSheetUrl("");
+    try {
+      const res = await fetch("/api/admin/export-bank-sheet", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        setMsg({ type: "error", text: json.error || `Export failed (${res.status})` });
+      } else {
+        setSheetUrl(json.url);
+        setMsg({
+          type: "success",
+          text: `Sheet created — ${json.rows} members, ${json.withDetails} with details${json.missing ? `, ${json.missing} missing` : ""}.`,
+        });
+        window.open(json.url, "_blank", "noopener,noreferrer");
+      }
+    } catch (e) {
+      setMsg({ type: "error", text: `Export failed: ${(e as Error).message}` });
+    }
+    setExporting(false);
+  }
+
+  // Offline fallback — also what to use when Google is not connected
+  function downloadBankCsv() {
+    const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines = [
+      BANK_COLUMNS.map(esc).join(","),
+      ...bankRows().map(r => r.cells.map(esc).join(",")),
+    ];
+    // BOM keeps Excel happy with the ₹ symbol and Indian names
+    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bcc-bank-details-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function fetchHolidays() {
@@ -417,6 +513,111 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
           )}
         </div>
       )}
+
+      {/* ── BANK DETAILS ── */}
+      {hrTab === "bank" && (() => {
+        const rows = bankRows();
+        const q = bankSearch.trim().toLowerCase();
+        const visible = q
+          ? rows.filter(r => r.cells.some(c => c.toLowerCase().includes(q)))
+          : rows;
+        const withDetails = rows.filter(r => r.hasDetails).length;
+        const missing = rows.length - withDetails;
+
+        return (
+          <div className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <Landmark className="w-4 h-4 text-indigo-500" />
+                    Team Bank Details
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {rows.length} team members · <span className="text-emerald-600 font-medium">{withDetails} with payout details</span>
+                    {missing > 0 && <> · <span className="text-amber-600 font-medium">{missing} missing</span></>}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button onClick={downloadBankCsv} disabled={rows.length === 0}
+                    title="Download as CSV — opens in Excel or Google Sheets"
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50">
+                    <Download className="w-3.5 h-3.5" /> CSV
+                  </button>
+                  <button onClick={exportBankSheet} disabled={exporting || rows.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg disabled:opacity-60">
+                    {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+                    {exporting ? "Creating sheet…" : "Download as Google Sheet"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 mt-4 px-3 py-2 bg-rose-50 border border-rose-100 rounded-lg">
+                <ShieldAlert className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-rose-700 leading-relaxed">
+                  Payout information. The exported sheet is created in your own Google Drive and is private until you share it —
+                  keep it that way, and share only with finance.
+                </p>
+              </div>
+
+              {sheetUrl && (
+                <a href={sheetUrl} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 mt-3 text-xs font-medium text-emerald-700 hover:text-emerald-800">
+                  <ExternalLink className="w-3.5 h-3.5" /> Open the sheet that was just created
+                </a>
+              )}
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100">
+                <div className="relative max-w-xs">
+                  <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  <input value={bankSearch} onChange={e => setBankSearch(e.target.value)}
+                    placeholder="Search name, bank, account…"
+                    className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+
+              {bankLoading ? (
+                <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-indigo-400" /></div>
+              ) : visible.length === 0 ? (
+                <div className="text-center py-16 text-slate-400 text-sm">
+                  <Landmark className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                  {rows.length === 0 ? "No team members yet." : "No matches."}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm whitespace-nowrap">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50/60">
+                        {BANK_COLUMNS.map(c => (
+                          <th key={c} className="text-left px-3 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{c}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {visible.map(r => (
+                        <tr key={r.member.id} className={`hover:bg-slate-50/60 transition-colors ${r.hasDetails ? "" : "bg-amber-50/40"}`}>
+                          {r.cells.map((c, i) => (
+                            <td key={i} className={`px-3 py-2.5 ${i === 1 ? "font-medium text-slate-900" : "text-slate-600"} ${[8, 9, 12].includes(i) ? "font-mono text-xs" : ""}`}>
+                              {c || <span className="text-slate-300">—</span>}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {missing > 0 && (
+                <p className="px-4 py-2.5 text-[11px] text-slate-400 border-t border-slate-100">
+                  Rows tinted amber have no account number or UPI ID — those people cannot be paid until they fill in Bank &amp; Payroll under My Profile.
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
