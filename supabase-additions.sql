@@ -399,3 +399,176 @@ alter table outbound_emails enable row level security;
 drop policy if exists "admins_read_outbound_emails" on outbound_emails;
 create policy "admins_read_outbound_emails" on outbound_emails for select to authenticated
   using (exists (select 1 from profiles where id = auth.uid() and role = 'admin'));
+
+-- ─── 13. AI Service vertical ─────────────────────────────────────────────────
+insert into verticals (name, color, icon, order_index)
+select 'AI Service', '#8b5cf6', '🤖', coalesce((select max(order_index) + 1 from verticals), 5)
+where not exists (select 1 from verticals where lower(name) = 'ai service');
+
+-- ─── 14. Client Details: payment received per month ──────────────────────────
+-- One row per client per month, so a retainer's payments are tracked month by
+-- month and a one-time deal is marked once in its own month.
+create table if not exists client_payments (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references clients(id) on delete cascade,
+  month text not null,
+  received boolean not null default false,
+  received_at timestamptz,
+  marked_by uuid references profiles(id) on delete set null,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (client_id, month)
+);
+alter table client_payments enable row level security;
+drop policy if exists "client_payments_all" on client_payments;
+create policy "client_payments_all" on client_payments
+  for all to authenticated using (true) with check (true);
+
+-- ─── 15. Live Media Plans: links, verification, creator payouts ──────────────
+alter table media_plan_items add column if not exists deliverable_date date;
+alter table media_plan_items add column if not exists page_link text;
+-- One link per deliverable: a page booked for 4 deliverables needs 4 links
+alter table media_plan_items add column if not exists live_links jsonb not null default '[]'::jsonb;
+alter table media_plans add column if not exists summary jsonb not null default '{}'::jsonb;
+alter table media_plan_items add column if not exists verified boolean not null default false;
+alter table media_plan_items add column if not exists verified_by uuid references profiles(id) on delete set null;
+alter table media_plan_items add column if not exists verified_at timestamptz;
+alter table media_plan_items add column if not exists paid boolean not null default false;
+alter table media_plan_items add column if not exists paid_by uuid references profiles(id) on delete set null;
+alter table media_plan_items add column if not exists paid_at timestamptz;
+alter table media_plans add column if not exists source text not null default 'generated';
+alter table media_plans add column if not exists source_file_name text;
+
+-- Only admins may mark a creator as paid, and only verifiers may verify.
+-- Enforced in the database, not just hidden in the UI.
+create or replace function enforce_media_item_permissions() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  r text;
+  levels jsonb;
+begin
+  -- to_jsonb works whether access_levels is text[] or jsonb
+  select role, coalesce(to_jsonb(access_levels), '[]'::jsonb) into r, levels from profiles where id = auth.uid();
+  -- service role / server routes have no auth.uid(); let them through
+  if auth.uid() is null then return new; end if;
+
+  if (new.paid is distinct from old.paid) and r <> 'admin' then
+    raise exception 'Only admins can mark a payout as paid';
+  end if;
+  if (new.verified is distinct from old.verified)
+     and r <> 'admin' and not (levels ? 'verify_live_links') then
+    raise exception 'You do not have permission to verify live links';
+  end if;
+  -- Payout amounts are money decisions
+  if ((new.total_cost is distinct from old.total_cost) or (new.rate is distinct from old.rate))
+     and r <> 'admin' then
+    raise exception 'Only admins can change payout amounts';
+  end if;
+  -- A verified link must not be swapped afterwards; un-verify first
+  if old.verified and new.verified
+     and (new.live_links is distinct from old.live_links) and r <> 'admin' then
+    raise exception 'Live links are locked once verified';
+  end if;
+  -- Paid requires verified, and an un-verify cannot strand a paid row
+  if new.paid and not new.verified then
+    raise exception 'A line item must be verified before it can be marked paid';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists media_item_permissions on media_plan_items;
+create trigger media_item_permissions before update on media_plan_items
+  for each row execute function enforce_media_item_permissions();
+
+-- ─── 16. Creator / page KYC from the public /join form ───────────────────────
+-- Kept out of influencer_submissions on purpose: that table is readable by
+-- every signed-in user, and KYC must be admin-only.
+create table if not exists influencer_kyc (
+  id uuid primary key default gen_random_uuid(),
+  submission_id uuid,
+  influencer_id uuid references influencers(id) on delete set null,
+  handle_name text,
+  platform text,
+  person_name text,
+  aadhaar_path text,
+  aadhaar_file_name text,
+  pan_path text,
+  pan_file_name text,
+  pan_number text,
+  account_holder_name text,
+  bank_name text,
+  account_number text,
+  ifsc_code text,
+  upi_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists influencer_kyc_submission_idx on influencer_kyc(submission_id);
+alter table influencer_kyc enable row level security;
+drop policy if exists "admins_read_kyc" on influencer_kyc;
+create policy "admins_read_kyc" on influencer_kyc for select to authenticated
+  using (exists (select 1 from profiles where id = auth.uid() and role = 'admin'));
+-- No insert/update/delete policies: writes only happen via the service role
+
+-- Private bucket: files are served to admins through short-lived signed URLs
+insert into storage.buckets (id, name, public)
+values ('kyc-docs', 'kyc-docs', false)
+on conflict (id) do update set public = false;
+
+-- ─── 17. HRMS role: may create team members, nothing else ────────────────────
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check
+  check (role in ('admin', 'member', 'hrms'));
+
+-- ─── 18. Lock down privileged profile fields ─────────────────────────────────
+-- The profiles write policy is `for all to authenticated using (true)`, so any
+-- signed-in user could set their own role to admin, grant themselves every
+-- module, or edit and delete other people's profiles from the browser console.
+-- This trigger makes roles and access admin-only and confines everyone else to
+-- their own row. Server routes use the service role (no auth.uid()) and pass.
+create or replace function guard_profile_changes() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  caller_role text;
+begin
+  if auth.uid() is null then
+    return coalesce(new, old);
+  end if;
+  select role into caller_role from profiles where id = auth.uid();
+  if caller_role = 'admin' then
+    return coalesce(new, old);
+  end if;
+
+  if tg_op = 'DELETE' then
+    raise exception 'Only admins can delete profiles';
+  end if;
+
+  if tg_op = 'INSERT' then
+    if new.role is distinct from 'member'
+       or jsonb_array_length(coalesce(to_jsonb(new.access_levels), '[]'::jsonb)) > 0 then
+      raise exception 'New profiles start as members with no access';
+    end if;
+    return new;
+  end if;
+
+  -- UPDATE
+  if new.id <> auth.uid() then
+    raise exception 'You can only edit your own profile';
+  end if;
+  if new.role is distinct from old.role
+     or to_jsonb(new.access_levels) is distinct from to_jsonb(old.access_levels)
+     or new.reporting_manager_id is distinct from old.reporting_manager_id
+     or new.locked_reporting_manager_id is distinct from old.locked_reporting_manager_id
+     or new.locked_designation is distinct from old.locked_designation
+     or new.locked_department is distinct from old.locked_department
+     or new.employee_id is distinct from old.employee_id
+     or new.employment_type is distinct from old.employment_type then
+    raise exception 'Only admins can change roles, access or HR fields';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists profiles_guard on profiles;
+create trigger profiles_guard before insert or update or delete on profiles
+  for each row execute function guard_profile_changes();
