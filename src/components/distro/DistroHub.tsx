@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Network, Database, FileText, Clock } from "lucide-react";
+import LiveMediaPlans from "./LiveMediaPlans";
+import { canAccess } from "@/lib/access-client";
+import { Network, Database, FileText, Clock, Radar } from "lucide-react";
 import type { Profile, Vertical } from "@/lib/types";
 import InfluencerDB from "./InfluencerDB";
 import BriefPlanner from "./BriefPlanner";
@@ -53,9 +55,12 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
     setActiveTab(id);
   }
 
+  const canVerifyLinks = canAccess(profile, "verify_live_links");
+  const canSeeLive = canAccess(profile, "live_media_plans") || canVerifyLinks;
   const TABS = [
     { id: "db", label: "Influencer Database", icon: Database },
     { id: "brief", label: "Campaign Brief", icon: FileText },
+    ...(canSeeLive ? [{ id: "live", label: "Live Media Plans", icon: Radar }] : []),
     { id: "pending", label: "Pending Approvals", icon: Clock, badge: pendingCount },
   ];
 
@@ -107,6 +112,9 @@ export default function DistroHub({ profile, userId, verticals }: Props) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
         {activeTab === "db" && <InfluencerDB />}
+        {activeTab === "live" && canSeeLive && (
+          <LiveMediaPlans embedded userId={userId} isAdmin={profile?.role === "admin"} canVerify={canVerifyLinks} />
+        )}
         {activeTab === "brief" && (
           <BriefPlanner
             key={editingBriefId || "new"}
