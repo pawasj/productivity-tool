@@ -131,25 +131,6 @@ export default function NotificationBell() {
       });
     });
 
-    // Overdue follow-ups (3+ days old, still open)
-    const { data: overdueFollowups } = await supabase
-      .from("discussions")
-      .select("id, title")
-      .eq("status", "open")
-      .lt("created_at", new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString())
-      .limit(5);
-
-    (overdueFollowups || []).forEach(d => {
-      liveNotifs.push({
-        id: `followup_${d.id}`,
-        type: "followup",
-        title: d.title || "Pending Follow-up",
-        body: "3+ days old, still open",
-        read: false,
-        created_at: new Date().toISOString(),
-      });
-    });
-
     // Recent CRM updates (last 24h)
     const { data: recentCRM } = await supabase
       .from("client_briefs")
@@ -203,7 +184,7 @@ export default function NotificationBell() {
     persistReadIds(newIds);
     setNotifs(n => n.map(x => x.id === id ? { ...x, read: true } : x));
     // Persist for DB-backed rows (live/synthetic ids contain an underscore prefix)
-    if (!/^(meet|followup|crm)_/.test(id)) {
+    if (!/^(meet|crm)_/.test(id)) {
       supabase.from("notifications").update({ read: true }).eq("id", id).then(() => {});
     }
   }

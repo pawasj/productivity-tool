@@ -8,9 +8,9 @@ import { createClient } from "@/lib/supabase";
 import {
   LayoutDashboard, Briefcase, Network, UserCircle,
   LogOut, ChevronRight, Shield,
-  MessageSquareDot, Building2, BarChart3, Users2, FileBarChart2, Share2,
-  CheckSquare, IndianRupee, FlaskConical, Radio, ListTodo, Lightbulb, HeartHandshake, Megaphone, Zap,
-  Menu, X,
+  Building2, BarChart3, Users2, FileBarChart2, Share2,
+  CheckSquare, IndianRupee, Radio, ListTodo, Lightbulb, HeartHandshake, Megaphone,
+  Menu, X, Radar, UserPlus,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { canAccess } from "@/lib/access-client";
@@ -25,18 +25,15 @@ const NAV_ITEMS = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", exact: true, module: null },
   { href: "/dashboard/pipeline", icon: Briefcase, label: "Sales Pipeline", module: "sales_pipeline" as const },
   { href: "/dashboard/distro", icon: Network, label: "Distribution Hub", module: "distribution_hub" as const },
-  { href: "/dashboard/discussions", icon: MessageSquareDot, label: "Discussion Board", module: "discussions" as const },
+  { href: "/dashboard/live-plans", icon: Radar, label: "Live Media Plans", module: "live_media_plans" as const },
   { href: "/dashboard/results", icon: BarChart3, label: "Campaign Results", module: "campaign_results" as const },
   { href: "/dashboard/clients", icon: Users2, label: "Client Details", module: "client_details" as const },
   { href: "/dashboard/reports", icon: FileBarChart2, label: "Reports", module: "reports" as const },
-  { href: "/dashboard/social-reports", icon: Share2, label: "Social Media Reports", module: "social_media_reports" as const },
   { href: "/dashboard/tasks", icon: CheckSquare, label: "Tasks", module: "tasks" as const },
   { href: "/dashboard/todos", icon: ListTodo, label: "To-Dos", module: "todos" as const },
   { href: "/dashboard/ideas", icon: Lightbulb, label: "Idea Dump", module: "idea_dump" as const },
   { href: "/dashboard/friends", icon: HeartHandshake, label: "Friends of BCC", module: "friends_of_bcc" as const },
-  { href: "/dashboard/jamming", icon: Zap, label: "Jamming Board", module: "jamming_board" as const },
   { href: "/dashboard/salary", icon: IndianRupee, label: "Salary & Payouts", module: "salary" as const },
-  { href: "/dashboard/research", icon: FlaskConical, label: "Research Hub", module: "research_hub" as const },
   { href: "/dashboard/vendors", icon: Building2, label: "Vendor Management", module: "vendor_management" as const },
   { href: "/dashboard/owned-media", icon: Radio, label: "Owned Media", module: "owned_media" as const },
   { href: "/dashboard/owned-media-sales", icon: Megaphone, label: "Owned Media Sales", module: "owned_media_sales" as const },
@@ -67,6 +64,7 @@ export default function Sidebar({ profile }: SidebarProps) {
   // Filter: null module = always visible, otherwise check canAccess
   const visibleItems = NAV_ITEMS.filter(item =>
     item.module === null || canAccess(profile, item.module)
+    || (item.module === "live_media_plans" && canAccess(profile, "verify_live_links"))
   );
 
   return (

@@ -10,21 +10,19 @@ export interface Vertical {
 export const ALL_MODULES = [
   "sales_pipeline",
   "distribution_hub",
-  "discussions",
   "campaign_results",
   "client_details",
   "reports",
-  "social_media_reports",
   "tasks",
   "salary",
-  "research_hub",
   "vendor_management",
   "owned_media",
   "owned_media_sales",
   "todos",
   "idea_dump",
   "friends_of_bcc",
-  "jamming_board",
+  "live_media_plans",
+  "verify_live_links",
   "admin_access",
 ] as const;
 
@@ -33,21 +31,19 @@ export type AppModule = typeof ALL_MODULES[number];
 export const MODULE_LABELS: Record<AppModule, string> = {
   sales_pipeline: "Sales Pipeline",
   distribution_hub: "Distribution Hub",
-  discussions: "Discussion Board",
   campaign_results: "Campaign Results",
   client_details: "Client Details",
   reports: "Reports",
-  social_media_reports: "Social Media Reports",
   tasks: "Tasks",
   salary: "Salary & Payouts",
-  research_hub: "Research Hub",
   vendor_management: "Vendor Management",
   owned_media: "Owned Media",
   owned_media_sales: "Owned Media Sales",
   todos: "To-Dos",
   idea_dump: "Idea Dump",
   friends_of_bcc: "Friends of BCC",
-  jamming_board: "Jamming Board",
+  live_media_plans: "Live Media Plans",
+  verify_live_links: "Verify Live Links",
   admin_access: "Admin Panel",
 };
 
@@ -55,21 +51,19 @@ export const MODULE_LABELS: Record<AppModule, string> = {
 export const MODULE_ROUTES: Record<AppModule, string> = {
   sales_pipeline: "/dashboard/pipeline",
   distribution_hub: "/dashboard/distro",
-  discussions: "/dashboard/discussions",
   campaign_results: "/dashboard/results",
   client_details: "/dashboard/clients",
   reports: "/dashboard/reports",
-  social_media_reports: "/dashboard/social-reports",
   tasks: "/dashboard/tasks",
   salary: "/dashboard/salary",
-  research_hub: "/dashboard/research",
   vendor_management: "/dashboard/vendors",
   owned_media: "/dashboard/owned-media",
   owned_media_sales: "/dashboard/owned-media-sales",
   todos: "/dashboard/todos",
   idea_dump: "/dashboard/ideas",
   friends_of_bcc: "/dashboard/friends",
-  jamming_board: "/dashboard/jamming",
+  live_media_plans: "/dashboard/live-plans",
+  verify_live_links: "/dashboard/live-plans",
   admin_access: "/dashboard/admin",
 };
 
@@ -106,7 +100,7 @@ export interface Profile {
   email: string;
   full_name: string;
   avatar_url?: string;
-  role: "admin" | "member";
+  role: "admin" | "member" | "hrms";
   phone?: string;
   designation?: string;
   department?: string;
