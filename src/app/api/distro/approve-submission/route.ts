@@ -64,10 +64,18 @@ export async function POST(req: NextRequest) {
     };
 
     // Upsert primary (by handle + platform)
-    const { error: insertErr } = await supabase
+    const { data: primaryRow, error: insertErr } = await supabase
       .from("influencers")
-      .upsert(baseRecord, { onConflict: "handle_name,platform", ignoreDuplicates: false });
+      .upsert(baseRecord, { onConflict: "handle_name,platform", ignoreDuplicates: false })
+      .select("id").single();
     if (insertErr) throw insertErr;
+
+    // Attach the KYC filed with this submission to the page it created
+    if (primaryRow?.id) {
+      await supabase.from("influencer_kyc")
+        .update({ influencer_id: primaryRow.id, updated_at: new Date().toISOString() })
+        .eq("submission_id", id);
+    }
 
     // Insert additional platforms if any
     const additional = Array.isArray(sub.additional_platforms) ? sub.additional_platforms : [];

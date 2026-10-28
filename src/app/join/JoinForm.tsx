@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Plus, X, CheckCircle2, ChevronDown, Users, Globe } from "lucide-react";
+import { Plus, X, CheckCircle2, ChevronDown, Users, Globe, ShieldCheck, FileText } from "lucide-react";
 
 const PLATFORMS = [
   { value: "instagram", label: "Instagram" },
@@ -43,6 +43,21 @@ const EMPTY_PLATFORM = (): PlatformEntry => ({
   rate_carousel: "", rate_collab_post: "", rate_combo: "",
 });
 
+// Payout details are checked here so people fix typos before submitting;
+// the API repeats every check, since this form is public.
+const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const UPI_RE = /^[\w.\-]{2,256}@[a-zA-Z][a-zA-Z0-9.\-]{1,64}$/;
+const MAX_FILE_MB = 5;
+const FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+
+function checkFile(f: File | null, label: string): string | null {
+  if (!f) return `Please upload your ${label}.`;
+  if (!FILE_TYPES.includes(f.type)) return `${label} must be a JPG, PNG, WEBP or PDF.`;
+  if (f.size > MAX_FILE_MB * 1024 * 1024) return `${label} must be under ${MAX_FILE_MB} MB.`;
+  return null;
+}
+
 function fmtFollowers(s: string) {
   const n = parseInt(s.replace(/[^0-9]/g, ""));
   if (!n) return "";
@@ -62,6 +77,9 @@ export default function JoinForm() {
   const [category, setCategory] = useState("");
   const [notes, setNotes] = useState("");
   const [platforms, setPlatforms] = useState<PlatformEntry[]>([EMPTY_PLATFORM()]);
+  const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
+  const [panFile, setPanFile] = useState<File | null>(null);
+  const [kyc, setKyc] = useState({ pan_number: "", account_holder_name: "", bank_name: "", account_number: "", confirm_account_number: "", ifsc_code: "", upi_id: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -88,24 +106,50 @@ export default function JoinForm() {
       setError("Please fill in at least the primary handle and platform.");
       return;
     }
+    // ── KYC ──
+    const pan = kyc.pan_number.trim().toUpperCase();
+    const ifsc = kyc.ifsc_code.trim().toUpperCase();
+    const acct = kyc.account_number.replace(/\s/g, "");
+    const upi = kyc.upi_id.trim();
+    const kycError =
+      checkFile(aadhaarFile, "Aadhaar card") ||
+      checkFile(panFile, "PAN card") ||
+      (!PAN_RE.test(pan) ? "PAN number should look like ABCDE1234F." : null) ||
+      (!acct && !upi ? "Add either bank account details or a UPI ID so we can pay you." : null) ||
+      (acct && !/^\d{9,18}$/.test(acct) ? "Bank account number should be 9–18 digits." : null) ||
+      (acct && acct !== kyc.confirm_account_number.replace(/\s/g, "") ? "The two account numbers don't match." : null) ||
+      (acct && !IFSC_RE.test(ifsc) ? "IFSC code should look like HDFC0001234." : null) ||
+      (acct && !kyc.account_holder_name.trim() ? "Please enter the account holder's name." : null) ||
+      (upi && !UPI_RE.test(upi) ? "UPI ID should look like name@bank." : null);
+    if (kycError) { setError(kycError); return; }
+
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/join", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          influencer_type: influencerType,
-          person_name: personName,
-          contact_no: contactNo,
-          email,
-          location,
-          state,
-          category: category || categories[0],
-          notes,
-          platforms,
-        }),
-      });
+      // Multipart, so the ID documents travel with the form
+      const fd = new FormData();
+      fd.append("payload", JSON.stringify({
+        influencer_type: influencerType,
+        person_name: personName,
+        contact_no: contactNo,
+        email,
+        location,
+        state,
+        category: category || categories[0],
+        notes,
+        platforms,
+        kyc: {
+          pan_number: pan,
+          account_holder_name: kyc.account_holder_name.trim(),
+          bank_name: kyc.bank_name.trim(),
+          account_number: acct,
+          ifsc_code: ifsc,
+          upi_id: upi,
+        },
+      }));
+      fd.append("aadhaar", aadhaarFile!);
+      fd.append("pan", panFile!);
+      const res = await fetch("/api/join", { method: "POST", body: fd });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error || "Submission failed");
@@ -377,6 +421,84 @@ export default function JoinForm() {
             className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/50 transition-all text-sm font-medium">
             <Plus className="w-4 h-4" /> Add Another Platform
           </button>
+        </div>
+
+        {/* KYC & payout */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
+            <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" /> KYC &amp; Payout Details
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Needed to pay you for campaigns. Stored privately and visible only to BCC&apos;s admin team.
+            </p>
+          </div>
+          <div className="p-6 grid grid-cols-2 gap-4">
+            {([
+              { label: "Aadhaar Card", file: aadhaarFile, set: setAadhaarFile },
+              { label: "PAN Card", file: panFile, set: setPanFile },
+            ] as const).map(d => (
+              <div key={d.label} className="col-span-2 sm:col-span-1">
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">{d.label} <span className="text-rose-500">*</span></label>
+                <label className={`flex items-center gap-2 px-3 py-2.5 border rounded-lg text-sm cursor-pointer transition-colors ${d.file ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-dashed border-slate-300 text-slate-500 hover:border-indigo-400"}`}>
+                  <FileText className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{d.file ? d.file.name : "Upload image or PDF"}</span>
+                  <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
+                    onChange={e => d.set(e.target.files?.[0] || null)} />
+                </label>
+                <p className="text-[11px] text-slate-400 mt-1">JPG, PNG, WEBP or PDF · up to {MAX_FILE_MB} MB</p>
+              </div>
+            ))}
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">PAN Number <span className="text-rose-500">*</span></label>
+              <input value={kyc.pan_number} maxLength={10}
+                onChange={e => setKyc(k => ({ ...k, pan_number: e.target.value.toUpperCase() }))}
+                placeholder="ABCDE1234F"
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">UPI ID</label>
+              <input value={kyc.upi_id} onChange={e => setKyc(k => ({ ...k, upi_id: e.target.value }))}
+                placeholder="name@okhdfcbank"
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <p className="col-span-2 text-xs font-semibold text-slate-500 pt-2 border-t border-slate-100">
+              Bank Account <span className="font-normal text-slate-400">— add this, a UPI ID, or both</span>
+            </p>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Account Holder Name</label>
+              <input value={kyc.account_holder_name} onChange={e => setKyc(k => ({ ...k, account_holder_name: e.target.value }))}
+                placeholder="As per bank records"
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Bank Name</label>
+              <input value={kyc.bank_name} onChange={e => setKyc(k => ({ ...k, bank_name: e.target.value }))}
+                placeholder="e.g. HDFC Bank"
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Account Number</label>
+              <input value={kyc.account_number} inputMode="numeric" autoComplete="off"
+                onChange={e => setKyc(k => ({ ...k, account_number: e.target.value.replace(/[^0-9]/g, "") }))}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Confirm Account Number</label>
+              <input value={kyc.confirm_account_number} inputMode="numeric" autoComplete="off"
+                onPaste={e => e.preventDefault()}
+                onChange={e => setKyc(k => ({ ...k, confirm_account_number: e.target.value.replace(/[^0-9]/g, "") }))}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">IFSC Code</label>
+              <input value={kyc.ifsc_code} maxLength={11}
+                onChange={e => setKyc(k => ({ ...k, ifsc_code: e.target.value.toUpperCase() }))}
+                placeholder="HDFC0001234"
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+          </div>
         </div>
 
         {/* Error */}

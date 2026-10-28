@@ -8,6 +8,7 @@ import {
   Users, Calendar, ClipboardList, Save, Plus, Trash2,
   CheckCircle2, XCircle, Loader2, AlertCircle,
   Landmark, FileSpreadsheet, Download, ExternalLink, Search, ShieldAlert,
+  BadgeCheck, Eye, EyeOff, FileText,
 } from "lucide-react";
 
 const HR_TABS = [
@@ -15,7 +16,26 @@ const HR_TABS = [
   { id: "holidays", label: "Holiday Calendar", icon: Calendar },
   { id: "leaves", label: "All Leave Approvals", icon: ClipboardList },
   { id: "bank", label: "Bank Details", icon: Landmark },
+  { id: "kyc", label: "Creator KYC", icon: BadgeCheck },
 ];
+
+interface KycRow {
+  id: string;
+  submission_id?: string;
+  influencer_id?: string;
+  handle_name?: string;
+  platform?: string;
+  person_name?: string;
+  pan_number?: string;
+  account_holder_name?: string;
+  bank_name?: string;
+  account_number?: string;
+  ifsc_code?: string;
+  upi_id?: string;
+  aadhaar_path?: string;
+  pan_path?: string;
+  created_at: string;
+}
 
 const EMPLOYMENT_LABELS: Record<string, string> = {
   full_time: "Full-Time", part_time: "Part-Time",
@@ -72,11 +92,18 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
   const [bankSearch, setBankSearch] = useState("");
   const [exporting, setExporting] = useState(false);
   const [sheetUrl, setSheetUrl] = useState("");
+  const [kycRows, setKycRows] = useState<KycRow[]>([]);
+  const [kycStatus, setKycStatus] = useState<Record<string, string>>({});
+  const [kycLoading, setKycLoading] = useState(false);
+  const [kycSearch, setKycSearch] = useState("");
+  const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [opening, setOpening] = useState<string | null>(null);
 
   useEffect(() => {
     if (hrTab === "leaves") fetchLeaves();
     if (hrTab === "holidays") fetchHolidays();
     if (hrTab === "bank") fetchBanks();
+    if (hrTab === "kyc") fetchKyc();
   }, [hrTab]);
 
   async function fetchLeaves() {
@@ -160,6 +187,37 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
     a.download = `bcc-bank-details-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function fetchKyc() {
+    setKycLoading(true);
+    // RLS lets only admins read this table
+    const { data, error } = await supabase.from("influencer_kyc").select("*").order("created_at", { ascending: false });
+    if (error) setMsg({ type: "error", text: `Couldn't load KYC: ${error.message}` });
+    const rows = (data || []) as KycRow[];
+    setKycRows(rows);
+    const ids = rows.map(r => r.submission_id).filter(Boolean) as string[];
+    if (ids.length) {
+      const { data: subs } = await supabase.from("influencer_submissions").select("id, status").in("id", ids);
+      setKycStatus(Object.fromEntries((subs || []).map(x => [x.id, x.status])));
+    }
+    setKycLoading(false);
+  }
+
+  async function openKycDoc(row: KycRow, doc: "aadhaar" | "pan") {
+    setOpening(`${row.id}-${doc}`);
+    // Open the tab synchronously so pop-up blockers allow it, then point it at the signed URL
+    const win = window.open("about:blank", "_blank");
+    try {
+      const res = await fetch(`/api/admin/kyc-file?id=${row.id}&doc=${doc}`);
+      const json = await res.json();
+      if (!res.ok || !json.url) throw new Error(json.error || "Couldn't open file");
+      if (win) win.location.href = json.url; else window.location.href = json.url;
+    } catch (e) {
+      win?.close();
+      setMsg({ type: "error", text: (e as Error).message });
+    }
+    setOpening(null);
   }
 
   async function fetchHolidays() {
@@ -613,6 +671,118 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
                 <p className="px-4 py-2.5 text-[11px] text-slate-400 border-t border-slate-100">
                   Rows tinted amber have no account number or UPI ID — those people cannot be paid until they fill in Bank &amp; Payroll under My Profile.
                 </p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── CREATOR KYC ── */}
+      {hrTab === "kyc" && (() => {
+        const q = kycSearch.trim().toLowerCase();
+        const visible = q
+          ? kycRows.filter(r => [r.handle_name, r.person_name, r.platform, r.pan_number, r.upi_id, r.bank_name]
+              .some(v => (v || "").toLowerCase().includes(q)))
+          : kycRows;
+        const mask = (v?: string) => v ? `•••• ${v.slice(-4)}` : "";
+        const STATUS: Record<string, string> = {
+          pending: "bg-amber-100 text-amber-700",
+          approved: "bg-emerald-100 text-emerald-700",
+          rejected: "bg-rose-100 text-rose-700",
+        };
+        return (
+          <div className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                <BadgeCheck className="w-4 h-4 text-indigo-500" /> Creator &amp; Page KYC
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {kycRows.length} submission{kycRows.length === 1 ? "" : "s"} from the public join page. Documents are stored privately
+                and open through links that expire after a minute.
+              </p>
+              <div className="flex items-start gap-2 mt-3 px-3 py-2 bg-rose-50 border border-rose-100 rounded-lg">
+                <ShieldAlert className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-rose-700">Identity documents and bank details. Admin-only — do not screenshot or forward.</p>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100">
+                <div className="relative max-w-xs">
+                  <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  <input value={kycSearch} onChange={e => setKycSearch(e.target.value)} placeholder="Search page, name, PAN, UPI…"
+                    className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+              {kycLoading ? (
+                <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-indigo-400" /></div>
+              ) : visible.length === 0 ? (
+                <div className="text-center py-16 text-slate-400 text-sm">
+                  <BadgeCheck className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                  {kycRows.length === 0 ? "No KYC submitted yet — it arrives with new registrations on /join." : "No matches."}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm whitespace-nowrap">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50/60 text-[11px] uppercase tracking-wide text-slate-500">
+                        {["Page / Creator", "Owner", "Status", "PAN", "Bank", "Account", "IFSC", "UPI", "Documents", "Submitted"].map(h => (
+                          <th key={h} className="text-left px-3 py-2.5 font-semibold">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {visible.map(r => {
+                        const st = (r.submission_id && kycStatus[r.submission_id]) || "pending";
+                        const shown = revealed.has(r.id);
+                        return (
+                          <tr key={r.id} className="hover:bg-slate-50/60">
+                            <td className="px-3 py-2.5">
+                              <p className="font-medium text-slate-900">{r.handle_name || "—"}</p>
+                              <p className="text-[11px] text-slate-400 capitalize">{r.platform || ""}</p>
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-600">{r.person_name || "—"}</td>
+                            <td className="px-3 py-2.5">
+                              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full capitalize ${STATUS[st] || STATUS.pending}`}>{st}</span>
+                            </td>
+                            <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{r.pan_number || "—"}</td>
+                            <td className="px-3 py-2.5 text-slate-600">
+                              {r.bank_name || "—"}
+                              {r.account_holder_name && <p className="text-[11px] text-slate-400">{r.account_holder_name}</p>}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {r.account_number ? (
+                                <button onClick={() => setRevealed(prev => { const n = new Set(prev); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })}
+                                  className="inline-flex items-center gap-1.5 font-mono text-xs text-slate-700 hover:text-indigo-600"
+                                  title={shown ? "Hide" : "Reveal"}>
+                                  {shown ? r.account_number : mask(r.account_number)}
+                                  {shown ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                </button>
+                              ) : <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{r.ifsc_code || "—"}</td>
+                            <td className="px-3 py-2.5 text-xs text-slate-700">{r.upi_id || "—"}</td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex gap-1.5">
+                                {(["aadhaar", "pan"] as const).map(d => (
+                                  <button key={d} onClick={() => openKycDoc(r, d)}
+                                    disabled={!(d === "aadhaar" ? r.aadhaar_path : r.pan_path) || opening === `${r.id}-${d}`}
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium border border-slate-200 rounded-md text-slate-600 hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-40">
+                                    {opening === `${r.id}-${d}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                                    {d === "aadhaar" ? "Aadhaar" : "PAN"}
+                                  </button>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-xs text-slate-400">
+                              {new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>
