@@ -327,8 +327,9 @@ export default function HRAdminClient({ adminProfile, members: initMembers }: Pr
                   <input value={editingMember.team || ""} onChange={e => setEditingMember({ ...editingMember, team: e.target.value })} placeholder="e.g. North India" className={inputCls} />
                 </HRField>
                 <HRField label="Role">
-                  <select value={editingMember.role || "member"} onChange={e => setEditingMember({ ...editingMember, role: e.target.value as "admin" | "member" })} className={inputCls}>
+                  <select value={editingMember.role || "member"} onChange={e => setEditingMember({ ...editingMember, role: e.target.value as Profile["role"] })} className={inputCls}>
                     <option value="member">Member</option>
+                    <option value="hrms">HRMS</option>
                     <option value="admin">Admin</option>
                   </select>
                 </HRField>

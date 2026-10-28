@@ -31,7 +31,7 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
-  const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
+  const [inviteRole, setInviteRole] = useState<"member" | "admin" | "hrms">("member");
   const [invitePassword, setInvitePassword] = useState("");
   const [inviteDept, setInviteDept] = useState("");
   const [inviteDesignation, setInviteDesignation] = useState("");
@@ -103,9 +103,11 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
     setInviteDept(""); setInviteDesignation(""); setInviteEmploymentType("full_time"); setInviteManager(""); setInviteAccessLevels([]);
   }
 
-  async function toggleRole(member: Profile) {
-    const newRole = member.role === "admin" ? "member" : "admin";
-    const { data } = await supabase.from("profiles").update({ role: newRole }).eq("id", member.id).select().single();
+  async function setRole(member: Profile, newRole: Profile["role"]) {
+    if (newRole === member.role) return;
+    if (newRole === "admin" && !confirm(`Make ${member.full_name} an admin? Admins can see and change everything, including salaries and KYC.`)) return;
+    const { data, error } = await supabase.from("profiles").update({ role: newRole }).eq("id", member.id).select().single();
+    if (error) { alert(`Couldn't change role: ${error.message}`); return; }
     if (data) setMembers(members.map((m) => m.id === member.id ? data as Profile : m));
   }
 
@@ -200,7 +202,7 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
           {[
             { label: "Total Members", value: members.length, icon: Users, color: "indigo" },
             { label: "Admins", value: members.filter((m) => m.role === "admin").length, icon: Crown, color: "amber" },
-            { label: "Team Members", value: members.filter((m) => m.role === "member").length, icon: User, color: "emerald" },
+            { label: "Team Members", value: members.filter((m) => m.role !== "admin").length, icon: User, color: "emerald" },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className={`bg-${color}-50 border border-${color}-100 rounded-xl p-4`}>
               <div className={`w-8 h-8 bg-${color}-100 rounded-lg flex items-center justify-center mb-2`}>
@@ -323,12 +325,13 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                       </button>
                       {member.id !== currentUser.id && (
                         <>
-                          <button
-                            onClick={() => toggleRole(member)}
-                            className="text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors"
-                          >
-                            Make {member.role === "admin" ? "Member" : "Admin"}
-                          </button>
+                          <select value={member.role} onChange={e => setRole(member, e.target.value as Profile["role"])}
+                            title="Role"
+                            className="text-xs text-indigo-700 border border-slate-200 hover:border-indigo-300 bg-white px-2 py-1 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                            <option value="member">Member</option>
+                            <option value="hrms">HRMS</option>
+                            <option value="admin">Admin</option>
+                          </select>
                           <button
                             onClick={() => removeUser(member)}
                             className="text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition-colors"
@@ -416,17 +419,22 @@ export default function AdminClient({ members: initialMembers, currentUser }: Pr
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
                   <div className="flex gap-2">
-                    {(["member", "admin"] as const).map((r) => (
+                    {(["member", "hrms", "admin"] as const).map((r) => (
                       <button key={r} onClick={() => setInviteRole(r)}
                         className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
                           inviteRole === r ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
                         }`}>
-                        {r === "admin" ? "Admin" : "Member"}
+                        {r === "admin" ? "Admin" : r === "hrms" ? "HRMS" : "Member"}
                       </button>
                     ))}
                   </div>
+                  {inviteRole === "hrms" && (
+                    <p className="text-xs text-slate-500 mt-1.5">
+                      HRMS can add new team members, nothing else. People they add start with no access until an admin grants it.
+                    </p>
+                  )}
                 </div>
-                {inviteRole === "member" && (
+                {inviteRole !== "admin" && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Module Access</label>
                     <div className="grid grid-cols-2 gap-2">

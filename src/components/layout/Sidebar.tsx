@@ -123,6 +123,25 @@ export default function Sidebar({ profile }: SidebarProps) {
           );
         })}
 
+        {profile?.role === "hrms" && (
+          <>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 pt-4 pb-1">
+              HRMS
+            </p>
+            <Link
+              href="/dashboard/team/add"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                pathname.startsWith("/dashboard/team/add")
+                  ? "bg-indigo-50 text-indigo-700"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+            >
+              <UserPlus className="w-4 h-4" />
+              Add Team Member
+            </Link>
+          </>
+        )}
+
         {canAccess(profile, "admin_access") && (
           <>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 pt-4 pb-1">
