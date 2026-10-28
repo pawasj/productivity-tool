@@ -134,6 +134,8 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
   const [month, setMonth] = useState(thisMonth);
   // Client-level P&L is admin-only, even for members who can see Client Details
   const [tab, setTab] = useState<"clients" | "profitability">("clients");
+  // Payment received, per client, for the selected month
+  const [payments, setPayments] = useState<Record<string, { received: boolean; received_at?: string }>>({});
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ExtClient | null>(null);
   const [form, setForm] = useState<typeof EMPTY>({ ...EMPTY });
@@ -187,6 +189,37 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase.from("client_payments").select("client_id, received, received_at").eq("month", month)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const map: Record<string, { received: boolean; received_at?: string }> = {};
+        for (const r of data || []) map[r.client_id] = { received: r.received, received_at: r.received_at };
+        setPayments(map);
+      });
+    return () => { cancelled = true; };
+  }, [month]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function togglePayment(c: ExtClient) {
+    const was = payments[c.id]?.received || false;
+    const next = !was;
+    const stamp = next ? new Date().toISOString() : undefined;
+    setPayments(p => ({ ...p, [c.id]: { received: next, received_at: stamp } }));
+    const { error } = await supabase.from("client_payments").upsert({
+      client_id: c.id,
+      month,
+      received: next,
+      received_at: stamp || null,
+      marked_by: userId,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "client_id,month" });
+    if (error) {
+      setPayments(p => ({ ...p, [c.id]: { received: was } }));
+      alert(`Couldn't update payment status: ${error.message}`);
+    }
+  }
 
   function sf(k: string, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -434,6 +467,11 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
   const isCurrentMonth = month === thisMonth();
 
 
+  const receivedClients = monthClients.filter(c => payments[c.id]?.received);
+  const receivedCount = receivedClients.length;
+  const receivedAmount = receivedClients.reduce((a, c) =>
+    a + (c.engagement_type === "retainer" ? (c.monthly_value || 0) : (c.amount || 0)), 0);
+
   const interns = vendors.filter(v => v.type === "intern");
   const vendorList = vendors.filter(v => v.type === "vendor");
 
@@ -491,10 +529,17 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
             )}
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
             { label: "Clients This Month", value: monthClients.length as string | number, color: "text-violet-600" },
             { label: "Running Retainers", value: monthRetainers.length as string | number, color: "text-emerald-600" },
+            {
+              label: "Payment Received",
+              value: (isAdmin
+                ? `${fmt(receivedAmount)} · ${receivedCount}/${monthClients.length}`
+                : `${receivedCount} of ${monthClients.length}`) as string | number,
+              color: receivedCount === monthClients.length && monthClients.length > 0 ? "text-emerald-600" : "text-amber-600",
+            },
             ...(isAdmin ? [
               { label: "One-time Revenue", value: fmt(totalRevenue) as string | number, color: "text-blue-600" },
               { label: "Retainer Revenue", value: fmt(totalMRR) as string | number, color: "text-amber-600" },
@@ -549,8 +594,10 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
               const { margin, profit } = calcProfitability(c);
               const hasOfferings = (c.offerings || []).length > 0;
               return (
-                <button key={c.id} onClick={() => setSelectedClient(c)}
-                  className={`w-full text-left p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${selectedClient?.id === c.id ? "bg-violet-50 border-l-2 border-l-violet-500" : ""}`}>
+                <div key={c.id} role="button" tabIndex={0}
+                  onClick={() => setSelectedClient(c)}
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedClient(c); } }}
+                  className={`w-full text-left p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${selectedClient?.id === c.id ? "bg-violet-50 border-l-2 border-l-violet-500" : ""}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-semibold text-slate-900 text-sm truncate">{c.name}</p>
@@ -582,15 +629,17 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
                         )}
                       </div>
                     </div>
-                    {isAdmin && (
-                      <div className="text-right shrink-0">
+                    <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
+                      {isAdmin && (
                         <p className="text-xs font-semibold text-slate-700">
                           {c.engagement_type === "retainer" ? `${fmt(c.monthly_value || 0)}/mo` : fmt(c.amount || 0)}
                         </p>
-                      </div>
-                    )}
+                      )}
+                      <PaymentToggle received={!!payments[c.id]?.received}
+                        onToggle={e => { e.stopPropagation(); togglePayment(c); }} />
+                    </div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -707,6 +756,18 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
                         <p className="text-[11px] text-slate-400">creators / pages</p>
                       </div>
                     )}
+                    <div>
+                      <p className="text-xs text-slate-400">Payment · {monthLabel(month)}</p>
+                      <div className="mt-1">
+                        <PaymentToggle size="md" received={!!payments[sc.id]?.received}
+                          onToggle={() => togglePayment(sc)} />
+                      </div>
+                      {payments[sc.id]?.received && payments[sc.id]?.received_at && (
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          marked {new Date(payments[sc.id]!.received_at!).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        </p>
+                      )}
+                    </div>
                     {sc.engagement_type === "retainer" && isAdmin && (
                       <div className="sm:col-span-3 pt-1">
                         {sc.end_month ? (
@@ -1441,5 +1502,28 @@ function EmployeeTable({ rows, members, memberSalaries, effortShares }: {
         </tfoot>
       </table>
     </div>
+  );
+}
+
+function PaymentToggle({ received, onToggle, size = "sm" }: {
+  received: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+  size?: "sm" | "md";
+}) {
+  return (
+    <button type="button" onClick={onToggle} aria-pressed={received}
+      title={received ? "Payment received — click to unmark" : "Mark payment received for this month"}
+      className={`inline-flex items-center gap-1 rounded-full font-medium border transition-colors ${size === "md" ? "px-3 py-1.5 text-xs" : "px-2 py-0.5 text-[11px]"} ${received
+        ? "bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200"
+        : "bg-white text-slate-500 border-slate-200 hover:border-amber-300 hover:text-amber-700"}`}>
+      <span className={`inline-flex items-center justify-center rounded ${size === "md" ? "w-3.5 h-3.5" : "w-3 h-3"} border ${received ? "bg-emerald-600 border-emerald-600" : "border-slate-300 bg-white"}`}>
+        {received && (
+          <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M2.5 6.5l2.5 2.5 4.5-5.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </span>
+      {received ? "Paid" : "Payment due"}
+    </button>
   );
 }
