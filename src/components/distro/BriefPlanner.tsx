@@ -9,6 +9,7 @@ import {
   ExternalLink, Percent, LayoutGrid,
 } from "lucide-react";
 import ManualPlanBuilder from "./ManualPlanBuilder";
+import MediaPlanUpload from "./MediaPlanUpload";
 import RetainerPlansSection from "./RetainerPlansSection";
 
 import type { PlanRow } from "@/lib/types";
@@ -288,6 +289,31 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
     setSavingBrief(false);
     if (err) { setError(`Failed to save brief: ${err}`); return; }
     setSaveMsg("✓ Brief saved");
+  }
+
+  // The uploader needs a brief row to hang the plan on; save one if needed
+  async function ensureBriefId(): Promise<string | null> {
+    if (crmId) return crmId;
+    if (!brief.brand_name.trim()) { setError("Please enter a brand name."); return null; }
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase.from("client_briefs").insert({
+      brand_name: brief.brand_name,
+      brand_poc: brief.poc_name,
+      poc_name: brief.poc_name,
+      engagement_type: brief.engagement_model,
+      budget: parseFloat(brief.total_budget) || 0,
+      total_budget: parseFloat(brief.total_budget) || 0,
+      industry: brief.industry,
+      campaign_type: brief.campaign_type,
+      target_audience: brief.target_audience,
+      campaign_objective: brief.campaign_objective,
+      timeline: brief.timeline,
+      status: "draft", created_by: user?.id, source: "distro",
+    }).select("id").single();
+    if (error || !data) { setError(`Failed to save brief: ${error?.message}`); return null; }
+    const id = (data as { id: string }).id;
+    setCrmId(id);
+    return id;
   }
 
   // ── Save to CRM ────────────────────────────────────────────────────────────
@@ -780,6 +806,8 @@ export default function BriefPlanner({ initialBriefId, prefillData, onNewBrief }
               {savingBrief ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               {savingBrief ? "Saving…" : "Save Brief"}
             </button>
+            <MediaPlanUpload ensureBrief={ensureBriefId}
+              onSaved={n => setSaveMsg(`✓ Media plan uploaded — ${n} line items. Once the campaign is approved or live they appear in Live Media Plans.`)} />
             <button
               onClick={() => { if (!brief.brand_name.trim()) { setError("Please enter a brand name."); return; } setError(""); setPendingMargin(String(agencyMargin)); setShowMarginModal(true); }}
               disabled={generatingPlan}
