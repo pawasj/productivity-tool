@@ -126,6 +126,31 @@ function activeInMonth(c: ExtClient, month: string): boolean {
   return start === month;                  // one-time
 }
 
+/**
+ * Every month this client is billed for, up to and including `upTo`.
+ * Same rules as activeInMonth: a retainer bills each month from its start
+ * until it ends; a one-time deal bills once, in its own month.
+ */
+function billableMonths(c: ExtClient, upTo: string): string[] {
+  const start = c.start_month || (c.created_at || "").slice(0, 7);
+  if (!start || start > upTo) return [];
+  if (c.engagement_type !== "retainer") return [start];
+  const last = c.end_month && c.end_month < upTo ? c.end_month : upTo;
+  const out: string[] = [];
+  let [y, m] = start.split("-").map(Number);
+  // Guard against a malformed date producing a runaway loop
+  for (let i = 0; i < 600; i++) {
+    const ym = `${y}-${String(m).padStart(2, "0")}`;
+    if (ym > last) break;
+    out.push(ym);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
+const billAmount = (c: ExtClient) =>
+  (c.engagement_type === "retainer" ? c.monthly_value : c.amount) || 0;
+
 export default function ClientsClient({ verticals, members, vendors, userId, isAdmin }: Props) {
   const [clients, setClients] = useState<ExtClient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,6 +161,9 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
   const [tab, setTab] = useState<"clients" | "profitability">("clients");
   // Payment received, per client, for the selected month
   const [payments, setPayments] = useState<Record<string, { received: boolean; received_at?: string }>>({});
+  // "clientId|YYYY-MM" for every month marked received — drives the outstanding total
+  const [paidKeys, setPaidKeys] = useState<Set<string>>(new Set());
+  const [showDues, setShowDues] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ExtClient | null>(null);
   const [form, setForm] = useState<typeof EMPTY>({ ...EMPTY });
@@ -202,21 +230,32 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
     return () => { cancelled = true; };
   }, [month]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function togglePayment(c: ExtClient) {
-    const was = payments[c.id]?.received || false;
+  useEffect(() => {
+    supabase.from("client_payments").select("client_id, month").eq("received", true)
+      .then(({ data }) => setPaidKeys(new Set((data || []).map(r => `${r.client_id}|${r.month}`))));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Defaults to the month being viewed; the dues breakdown passes past months
+  async function togglePayment(c: ExtClient, forMonth: string = month) {
+    const key = `${c.id}|${forMonth}`;
+    const was = paidKeys.has(key);
     const next = !was;
     const stamp = next ? new Date().toISOString() : undefined;
-    setPayments(p => ({ ...p, [c.id]: { received: next, received_at: stamp } }));
+    const apply = (received: boolean, at?: string) => {
+      setPaidKeys(prev => { const n = new Set(prev); if (received) n.add(key); else n.delete(key); return n; });
+      if (forMonth === month) setPayments(p => ({ ...p, [c.id]: { received, received_at: at } }));
+    };
+    apply(next, stamp);
     const { error } = await supabase.from("client_payments").upsert({
       client_id: c.id,
-      month,
+      month: forMonth,
       received: next,
       received_at: stamp || null,
       marked_by: userId,
       updated_at: new Date().toISOString(),
     }, { onConflict: "client_id,month" });
     if (error) {
-      setPayments(p => ({ ...p, [c.id]: { received: was } }));
+      apply(was);
       alert(`Couldn't update payment status: ${error.message}`);
     }
   }
@@ -467,6 +506,23 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
   const isCurrentMonth = month === thisMonth();
 
 
+  // Outstanding as of the month being viewed: every billed month not yet received
+  const dues = clients.flatMap(c =>
+    billableMonths(c, month)
+      .filter(m => !paidKeys.has(`${c.id}|${m}`))
+      .map(m => ({ client: c, month: m, amount: billAmount(c) })))
+    .filter(d => d.amount > 0);
+  const totalDue = dues.reduce((a, d) => a + d.amount, 0);
+  const dueThisMonth = dues.filter(d => d.month === month).reduce((a, d) => a + d.amount, 0);
+  const dueCarried = totalDue - dueThisMonth;
+  const duesByClient = Object.values(dues.reduce<Record<string, { client: ExtClient; months: string[]; amount: number }>>((acc, d) => {
+    const e = acc[d.client.id] ||= { client: d.client, months: [], amount: 0 };
+    e.months.push(d.month); e.amount += d.amount;
+    return acc;
+  }, {})).sort((a, b) => b.amount - a.amount);
+  const carriedMonthsFor = (c: ExtClient) =>
+    dues.filter(d => d.client.id === c.id && d.month < month).length;
+
   const receivedClients = monthClients.filter(c => payments[c.id]?.received);
   const receivedCount = receivedClients.length;
   const receivedAmount = receivedClients.reduce((a, c) =>
@@ -529,6 +585,73 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
             )}
           </div>
         </div>
+        {/* Outstanding payments — cumulative up to the month being viewed */}
+        <div className={`mb-3 rounded-xl border ${totalDue > 0 ? "border-rose-200 bg-rose-50/60" : "border-emerald-200 bg-emerald-50/60"}`}>
+          <button type="button" onClick={() => setShowDues(v => !v)} disabled={dues.length === 0}
+            className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left flex-wrap disabled:cursor-default">
+            <div>
+              <p className={`text-xs font-semibold uppercase tracking-wide ${totalDue > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                Payment due · as of {monthLabel(month)}
+              </p>
+              {isAdmin ? (
+                <p className={`text-2xl font-bold mt-0.5 ${totalDue > 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                  {totalDue > 0 ? fmt(totalDue) : "All clear"}
+                </p>
+              ) : (
+                <p className={`text-2xl font-bold mt-0.5 ${totalDue > 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                  {dues.length > 0 ? `${dues.length} payment${dues.length === 1 ? "" : "s"} due` : "All clear"}
+                </p>
+              )}
+            </div>
+            {dues.length > 0 && (
+              <div className="flex items-center gap-4 text-xs">
+                {isAdmin && (
+                  <>
+                    <div>
+                      <p className="text-slate-500">This month</p>
+                      <p className="font-semibold text-slate-800">{fmt(dueThisMonth)}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Carried from earlier</p>
+                      <p className={`font-semibold ${dueCarried > 0 ? "text-rose-700" : "text-slate-800"}`}>{fmt(dueCarried)}</p>
+                    </div>
+                  </>
+                )}
+                <div>
+                  <p className="text-slate-500">Clients</p>
+                  <p className="font-semibold text-slate-800">{duesByClient.length}</p>
+                </div>
+                <span className="text-rose-500 font-medium">{showDues ? "Hide ▲" : "Details ▼"}</span>
+              </div>
+            )}
+          </button>
+
+          {showDues && dues.length > 0 && (
+            <div className="border-t border-rose-200 px-4 py-3 space-y-2 max-h-72 overflow-y-auto">
+              <p className="text-[11px] text-slate-500">Click a month to mark it received — the total updates straight away.</p>
+              {duesByClient.map(d => (
+                <div key={d.client.id} className="flex items-start justify-between gap-3 bg-white rounded-lg border border-rose-100 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{d.client.name}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {d.months.map(m => (
+                        <button key={m} type="button" onClick={() => togglePayment(d.client, m)}
+                          title={`Mark ${monthLabel(m)} received`}
+                          className={`text-[11px] px-2 py-0.5 rounded-full border font-medium transition-colors ${m < month
+                            ? "bg-rose-100 text-rose-700 border-rose-200 hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200"}`}>
+                          {monthLabel(m)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {isAdmin && <p className="text-sm font-bold text-rose-700 shrink-0">{fmt(d.amount)}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
             { label: "Clients This Month", value: monthClients.length as string | number, color: "text-violet-600" },
@@ -637,6 +760,11 @@ export default function ClientsClient({ verticals, members, vendors, userId, isA
                       )}
                       <PaymentToggle received={!!payments[c.id]?.received}
                         onToggle={e => { e.stopPropagation(); togglePayment(c); }} />
+                      {carriedMonthsFor(c) > 0 && (
+                        <span className="text-[10px] font-semibold text-rose-600">
+                          +{carriedMonthsFor(c)} earlier month{carriedMonthsFor(c) === 1 ? "" : "s"} due
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
